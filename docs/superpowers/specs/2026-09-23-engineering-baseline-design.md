@@ -172,10 +172,12 @@ workflow 文件已落地但从未被 GitHub Actions 跑过。下表只记与本�
 
 ### 7.4 实测数字（供后续引用带出处）
 
-- 覆盖率 2026-09-23，本机 Windows / node v24.14.1，口径见 7.3：
-  statements **45.40%** / branches **77.83%** / functions **67.76%** / lines **45.40%**
-  → 门槛设 45 / 75 / 65 / 45（向下取整到 5）。
-  分模块看：`extensions/lib` 71.21%，`extensions/` 胶水层 7.03%，`web/` 0%。
+- 覆盖率 2026-09-23，本机 Windows / node v24.14.1，口径见 7.3。
+  **升级 vitest 后以 4.1.11 为准**（见 7.6）：
+  statements **47.84%** / branches **43.75%** / functions **≈50%** / lines **47.81%**，两次跑逐位一致
+  → 门槛设 45 / 40 / 45 / 45。
+  历史值（vitest 3.2.7，同分母）：45.40 / 77.83 / 67.76 / 45.40 —— **branch 与 functions 两列不可跨版本比较**。
+  分模块看（v4）：`extensions/lib` 69.74%，`extensions/` 胶水层 6.81%，`web/` 0%。
 - `npm ci` 本机实跑退出 0（非 dry-run）。lock 因手改 package.json 一度与根 devDependencies 不同步，
   已 `npm install --package-lock-only` 修复，并逐包比对新旧 lock 确认 **0 处版本漂移**
   （那 6485 行 diff 纯为 npm 重排键序）。
@@ -186,9 +188,29 @@ workflow 文件已落地但从未被 GitHub Actions 跑过。下表只记与本�
 
 1. **推送并跑通判据 5**：需建 GitHub 仓库、加 remote、在 Settings → Emails 注册 noreply 邮箱，然后 push。
    这一步涉及共享状态，未自行执行。
-2. **vitest 3.2.7 → ≥4.1.11**：`npm audit` 3 个 moderate 全部来自 vitest/@vitest/mocker
-   （范围 `>=2.1.0 <4.1.11`），3.x 线无修补版本。仅 devDependency、不入 `files` 白名单、不随包分发，
-   大版本升级需重测覆盖率并可能改配置键，故本次未做。
+2. ~~vitest 3.2.7 → ≥4.1.11~~ —— **已完成，见 7.6**。
 3. **26 条 lint warning**：以 `noNonNullAssertion`（19）为主，清理会触碰 `extensions/` 运行时语义，
    超出本 spec 非目标范围。
 4. `.editorconfig` 未建（见 7.1）。
+
+### 7.6 vitest 升级（2026-09-23 追加，用户指定优先于推送）
+
+升到 **4.1.11**，`npm audit` 由 3 moderate 变为 **0 漏洞**；71 项测试全过，无需改用例。
+
+过程中撞出三件事：
+
+1. **`coverage.all` 在 v4 被整个删除**，且运行时对未知键**静默忽略**——写 `all: true` 不报错也不生效。
+   真正的开关是 `coverage.include`；不设它则分母退化为"只统计被测试导入过的文件"，
+   0% 文件（`web/server.ts`、`checkflow.ts`、`hypotheses.ts` 等）全部消失，
+   statements 从 45.40 **虚涨到 68.85**。本可顺着这个数字把门槛写高，但那不是覆盖率变好了。
+2. **这条能被拦住纯属运气修正**：`vitest.config.ts` 原本不在 `tsconfig.include` 里，
+   `tsc` 从不检查它——也正是 7.2 里"coverage 写错层级"能潜伏一整轮的原因。
+   纳入后 tsc 立刻报 `'all' does not exist in type 'CoverageOptions'`。
+   已用变异测试反向验证：把 `coverage` 挪回顶层，tsc 报 TS2769 退出 2。
+3. **branch/functions 的计数定义随大版本变了**，不是口径问题：同分母下 branch 77.83 → 43.75。
+   因此门槛从 45/75/65/45 重设为 45/40/45/45，并在 CHANGELOG 明确标注**跨版本不可比**，
+   避免被读成覆盖率退步。
+
+另外把 `vitest` 与 `@vitest/coverage-v8` 从 `^4.1.11` 改为**精确锁** `4.1.11`：
+coverage 的 peer 要求 vitest 精确相等，留 `^` 会在上游发补丁版时重演 7.2 里那次安装阻断。
+
