@@ -1,7 +1,7 @@
 # OfferLens 迁移计划：从独立 JS 应用到 Pi 包
 
 > **本文档的目标读者**：执行迁移的 AI 模型或开发者。
-> **前提**：当前代码（`src/` 下的 JavaScript 实现）功能逻辑已基本完成，但形态是独立 CLI 应用，不是 Pi 包。本计划覆盖两件事：① 把现有功能迁移为真正的 Pi 包（`pi install ./` 可安装）；② 补齐原计划文档（`grounded-tide-robin.md`）中尚未实现的部分。
+> **前提**：当前代码（`src/` 下的 JavaScript 实现）功能逻辑已基本完成，但形态是独立 CLI 应用，不是 Pi 包。本计划覆盖两件事：① 把现有功能迁移为真正的 Pi 包（`pi install ./` 可安装）；② 补齐原计划文档（`2026-09-08-tree-of-hypotheses-plan.md`，原名 `grounded-tide-robin.md`）中尚未实现的部分。
 > **Pi 框架**：`@earendil-works/pi-coding-agent`（MIT，v0.84.4）。Pi 源码参考路径：`C:\Users\86186\Documents\Qoder\2026-09-02\9fc6ad4b\pi-src\packages\coding-agent\`
 
 ---
@@ -582,7 +582,7 @@ echo "$ # 自动列出：样本量不足 / 后验对单一特征敏感 / 源不�
 
 | 用途 | 路径 |
 |---|---|
-| 原计划文档（权威） | `./grounded-tide-robin.md` |
+| 原计划文档（权威） | `./2026-09-08-tree-of-hypotheses-plan.md` |
 | Pi subagent vendor 源 | `C:\Users\86186\Documents\Qoder\2026-09-02\9fc6ad4b\pi-src\packages\coding-agent\examples\extensions\subagent\` |
 | Pi 扩展 API 文档 | `pi-src\packages\coding-agent\docs\extensions.md`（1700+ 行） |
 | Pi SDK 文档 | `pi-src\packages\coding-agent\docs\sdk.md` |
