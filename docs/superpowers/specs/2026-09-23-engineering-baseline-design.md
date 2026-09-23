@@ -1,6 +1,6 @@
 # spec-1 工程基线（OfferLens）
 
-日期：2026-09-23 · 状态：**已执行**（判据 5 未验证，偏差与实测见 §7） · 取向：求职可展示（轴1）
+日期：2026-09-23 · 状态：**已执行，判据 1–8 全过**（含 CI 四格真绿，见 §7.7） · 取向：求职可展示（轴1）
 前置：本文档假定 `9e94fa2` 基线 commit 已存在。
 
 ## 1. 目标与非目标
@@ -131,8 +131,7 @@ docs/
 
 ## 7. 执行记录与偏差（2026-09-23 落地后回填）
 
-状态改为**已执行**。判据 1–4、6–8 全过；**判据 5（CI 四格全绿）未验证** —— 本机 `git remote -v` 为空，
-workflow 文件已落地但从未被 GitHub Actions 跑过。下表只记与本文预设不符之处。
+状态改为**已执行**。判据 1–8 **全过**（判据 5 的 CI 四格于 §7.7 真跑通过）。下表只记与本文预设不符之处。
 
 ### 7.1 本文的事实错误（已就地更正）
 
@@ -186,8 +185,7 @@ workflow 文件已落地但从未被 GitHub Actions 跑过。下表只记与本�
 
 ### 7.5 遗留待办
 
-1. **推送并跑通判据 5**：需建 GitHub 仓库、加 remote、在 Settings → Emails 注册 noreply 邮箱，然后 push。
-   这一步涉及共享状态，未自行执行。
+1. ~~**推送并跑通判据 5**~~ —— **已完成，见 §7.7**。
 2. ~~vitest 3.2.7 → ≥4.1.11~~ —— **已完成，见 7.6**。
 3. **26 条 lint warning**：以 `noNonNullAssertion`（19）为主，清理会触碰 `extensions/` 运行时语义，
    超出本 spec 非目标范围。
@@ -213,4 +211,40 @@ workflow 文件已落地但从未被 GitHub Actions 跑过。下表只记与本�
 
 另外把 `vitest` 与 `@vitest/coverage-v8` 从 `^4.1.11` 改为**精确锁** `4.1.11`：
 coverage 的 peer 要求 vitest 精确相等，留 `^` 会在上游发补丁版时重演 7.2 里那次安装阻断。
+
+### 7.7 推送与判据 5 实测（2026-09-23）
+
+仓库 `tree-afk/OfferLens` 以 **public** 新建（`§6.2` 的决策前提是"仓库公开后 QQ 邮箱进入采集面"，
+即目标形态本就是公开；且判据 5 的 CI 徽章要对面试官可见，private 不成立）。
+11 个 commit 全部推上，`origin/main` 与本地 HEAD 同为 `116036b`。
+
+**判据 5 达成** —— run `35821941910`，4 个 job 逐一核对（不看 run 级 success，因为 skipped job 也会让
+run 显示成功）：
+
+| job | status | conclusion | 失败步骤 |
+|---|---|---|---|
+| `verify (ubuntu-latest, 22.x)` | completed | **success** | none |
+| `verify (windows-latest, 22.x)` | completed | **success** | none |
+| `verify (windows-latest, 24.x)` | completed | **success** | none |
+| `verify (ubuntu-latest, 24.x)` | completed | **success** | none |
+
+覆盖率 artifact 仅 1 份（`coverage`，170451 bytes），符合"只在 ubuntu/24 产出"的设计。
+CI 徽章未认证 GET 返回 **HTTP 200**，即外部读者无需登录即可看到。
+
+过程中修掉的两个环境事实：
+
+1. **`§6.2` 的 noreply 前提此前未被验证过**。本机 git 凭据属主经查是 `tree-afk`（id 104764360），
+   且推送后 11 条 commit 的 `author` 对象**全部解析为 login `tree-afk`** —— 说明该 noreply 邮箱
+   确已注册在账号上，贡献格子会计。注意 `/user/emails` 这个 token 打不开（缺 `user:email` scope，
+   GitHub 对缺 scope 回 404 而非 403），所以只能靠推送后回查 commit 归属来实证，
+   不能靠 API 预检。
+2. **`~/.gitconfig` 里的 `http(s).proxy` 指向 127.0.0.1:7892，而该端口无进程监听**，
+   与环境变量 `HTTP(S)_PROXY` 的 **7890** 不是同一套。症状是
+   `Failed to connect to github.com port 443 via 127.0.0.1`，容易被误读成"GitHub 被墙/网络不通"。
+   经用户确认后将 gitconfig 改为 7890，`git ls-remote https://github.com/git/git.git` 随即返回正常 HEAD。
+
+顺带一个 Windows 特有的坑：用 `curl -d` 直接内联中文 JSON 建仓库会返回 `Problems parsing JSON`
+（控制台代码页把 UTF-8 改写了）；改成写 `.tmp_*.json` 文件再 `--data-binary @file` 即通过，
+仓库中文描述完好入库。注意 `/tmp` 在 node 与 Git Bash 下解析到不同目录，落盘要用仓库内相对路径。
+
 

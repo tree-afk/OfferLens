@@ -62,8 +62,6 @@
 
 - 端到端真跑目前只在 Windows + 阿里百炼（qwen-turbo/plus/max）验证过一次；查询面偏宽导致
   29 条采纳证据之外有 54 条被判跑题，B 站以外通道在该次运行中未产出可用结果。
-- CI 四格矩阵（含 `windows-latest`）**尚未被 GitHub Actions 实际跑过**：本机无 remote，
-  仅本地 `npm ci` + `npm run verify` 通过。
 - `extensions/` 胶水层与 `web/` 覆盖率仍为 0（刻意保留在分母内，不靠排除项把数字做高）。
 
 [0.2.0]: https://github.com/tree-afk/OfferLens/releases/tag/v0.2.0
