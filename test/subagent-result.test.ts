@@ -24,7 +24,11 @@ describe("captureEmitArgs（子进程 emit 工具入参捕获）", () => {
 		const msgs = [
 			assistantToolCall("emit_contrarian_result", { rebuttal: "v1", lrAdjustments: [], couldNotRefute: false }),
 			assistantText("中间说明"),
-			assistantToolCall("emit_contrarian_result", { rebuttal: "v2-final", lrAdjustments: [{ feature: "sampleSize", multiplier: 1.5, argument: "x" }], couldNotRefute: false }),
+			assistantToolCall("emit_contrarian_result", {
+				rebuttal: "v2-final",
+				lrAdjustments: [{ feature: "sampleSize", multiplier: 1.5, argument: "x" }],
+				couldNotRefute: false,
+			}),
 		];
 		const got = captureEmitArgs(msgs, "emit_contrarian_result") as { rebuttal: string };
 		expect(got.rebuttal).toBe("v2-final");
@@ -39,8 +43,30 @@ describe("captureEmitArgs（子进程 emit 工具入参捕获）", () => {
 describe("harvestCollector（从 fetch_* 工具结果收割，而非解析 LLM 大 JSON）", () => {
 	test("合并多个 fetch 工具的 RawItem 数组", () => {
 		const msgs = [
-			toolResult("fetch_bilibili", [{ source: "bilibili:1", url: "u1", platform: "bilibili", title: "t1", rawSnippet: "s1", publishedAt: null, author: null, channelAuthority: "ugc" }]),
-			toolResult("fetch_rss", [{ source: "rss:1", url: "u2", platform: "rss", title: "t2", rawSnippet: "s2", publishedAt: null, author: null, channelAuthority: "official" }]),
+			toolResult("fetch_bilibili", [
+				{
+					source: "bilibili:1",
+					url: "u1",
+					platform: "bilibili",
+					title: "t1",
+					rawSnippet: "s1",
+					publishedAt: null,
+					author: null,
+					channelAuthority: "ugc",
+				},
+			]),
+			toolResult("fetch_rss", [
+				{
+					source: "rss:1",
+					url: "u2",
+					platform: "rss",
+					title: "t2",
+					rawSnippet: "s2",
+					publishedAt: null,
+					author: null,
+					channelAuthority: "official",
+				},
+			]),
 		];
 		const { items, degraded } = harvestCollector(msgs);
 		expect(items.map((i) => i.url)).toEqual(["u1", "u2"]);
@@ -55,14 +81,26 @@ describe("harvestCollector（从 fetch_* 工具结果收割，而非解析 LLM �
 	});
 
 	test("忽略非 fetch_* 工具与非 JSON 输出", () => {
-		const msgs = [toolResult("emit_something", [1, 2, 3]), { role: "toolResult", toolName: "fetch_web", content: [{ type: "text", text: "not json" }] } as LooseMessage];
+		const msgs = [
+			toolResult("emit_something", [1, 2, 3]),
+			{ role: "toolResult", toolName: "fetch_web", content: [{ type: "text", text: "not json" }] } as LooseMessage,
+		];
 		const { items } = harvestCollector(msgs);
 		expect(items).toHaveLength(0);
 	});
 });
 
 describe("runVerifier 混合模式（确定性特征 + LLM 仅覆盖相关性）", () => {
-	const evidence = [{ id: "e1", title: "内推码 OFFER2027 分享", rawSnippet: "我用内推码投了字节实习", publishedAt: null, author: null, comments: null }];
+	const evidence = [
+		{
+			id: "e1",
+			title: "内推码 OFFER2027 分享",
+			rawSnippet: "我用内推码投了字节实习",
+			publishedAt: null,
+			author: null,
+			comments: null,
+		},
+	];
 
 	test("relevanceOverride 覆盖相关性，但 promoCode 等特征仍确定性计算", () => {
 		const r = runVerifier({ evidence, claim: "字节转正率", relevanceOverride: { e1: "tangent" } });

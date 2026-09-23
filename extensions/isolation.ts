@@ -21,24 +21,24 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { loadConfig } from "./lib/config.ts";
-import { assertContrarianSchemaIsolation, validateDispatchPayload } from "./lib/schema.ts";
 import { sharedEvidenceIndex } from "./lib/evidence.ts";
 import { runCollector, runContrarian, runVerifier, type VerifierInputItem } from "./lib/roles.ts";
+import { type BranchState, hasRunState, recordContrarian, recordVerifier, runState } from "./lib/runstate.ts";
 import { runtime } from "./lib/runtime.ts";
-import { hasRunState, recordVerifier, recordContrarian, runState, type BranchState } from "./lib/runstate.ts";
+import { assertContrarianSchemaIsolation, validateDispatchPayload } from "./lib/schema.ts";
 import type {
 	Assessment,
-	ContrarianResult,
-	ContrarianPayload,
 	CollectorPayload,
 	CollectorResult,
+	ContrarianPayload,
+	ContrarianResult,
 	Hypothesis,
 	RawItem,
 	SourcePlanEntry,
 	VerifierPayload,
 	VerifierResult,
 } from "./lib/types.ts";
-import { runSingleAgent, isFailedResult } from "./subagent/index.ts";
+import { isFailedResult, runSingleAgent } from "./subagent/index.ts";
 
 /* ---------- TypeBox 封闭 schema（与 lib/schema.ts 的规范描述一一对应） ---------- */
 
@@ -110,7 +110,10 @@ export function captureEmitArgs(messages: LooseMessage[], toolName: string): unk
 }
 
 /** 采集：不要求 LLM 重发大 JSON，直接收割 fetch_* 工具的结构化返回（工具结果本就是 RawItem[]）。 */
-export function harvestCollector(messages: LooseMessage[]): { items: RawItem[]; degraded: Array<{ channel: string; query: string; reason: string }> } {
+export function harvestCollector(messages: LooseMessage[]): {
+	items: RawItem[];
+	degraded: Array<{ channel: string; query: string; reason: string }>;
+} {
 	const items: RawItem[] = [];
 	const degraded: Array<{ channel: string; query: string; reason: string }> = [];
 	for (const m of messages) {
@@ -122,7 +125,11 @@ export function harvestCollector(messages: LooseMessage[]): { items: RawItem[]; 
 			const json = JSON.parse(text) as unknown;
 			if (Array.isArray(json)) items.push(...(json as RawItem[]));
 			else if (json && typeof json === "object" && "error" in (json as Record<string, unknown>)) {
-				degraded.push({ channel: tool.replace("fetch_", ""), query: "", reason: String((json as Record<string, unknown>).error) });
+				degraded.push({
+					channel: tool.replace("fetch_", ""),
+					query: "",
+					reason: String((json as Record<string, unknown>).error),
+				});
 			}
 		} catch {
 			/* 非 JSON 的工具输出忽略（例如降级路径的结构化错误已是 JSON） */
@@ -152,7 +159,10 @@ async function runRoleProcess(role: "collector" | "verifier" | "contrarian", tas
 		(results) => ({ mode: "single", agentScope: "both", projectAgentsDir: discovery.projectAgentsDir, results }),
 	);
 	if (isFailedResult(result)) {
-		return { ok: false as const, error: `子 Agent ${role} 失败: ${result.errorMessage ?? result.stderr.slice(0, 300)}` };
+		return {
+			ok: false as const,
+			error: `子 Agent ${role} 失败: ${result.errorMessage ?? result.stderr.slice(0, 300)}`,
+		};
 	}
 	return { ok: true as const, messages: result.messages as LooseMessage[] };
 }
@@ -173,7 +183,11 @@ async function withRetry<T>(tries: number, runOnce: () => Promise<DispatchOutcom
 function collectorPlan(hypothesis: string, queries: string[], urls: string[]): SourcePlanEntry[] {
 	const plan: SourcePlanEntry[] = queries.map((q) => ({ tool: "fetch_bilibili", args: { keyword: q } }));
 	for (const u of urls) {
-		plan.push(/youtube\.com|youtu\.be/.test(u) ? { tool: "fetch_youtube", args: { url: u } } : { tool: "fetch_web", args: { url: u } });
+		plan.push(
+			/youtube\.com|youtu\.be/.test(u)
+				? { tool: "fetch_youtube", args: { url: u } }
+				: { tool: "fetch_web", args: { url: u } },
+		);
 	}
 	return plan;
 }
@@ -200,7 +214,8 @@ export async function dispatchCollector(
 		return { ok: true, result, via: "stub" };
 	}
 	// subagent 模式：sourcePlan 传给子进程执行 fetch_* 工具，父侧直接收割工具结果
-	const sourcePlan = sanitized.sourcePlan ?? collectorPlan(sanitized.hypothesis, sanitized.queries, sanitized.urls ?? []);
+	const sourcePlan =
+		sanitized.sourcePlan ?? collectorPlan(sanitized.hypothesis, sanitized.queries, sanitized.urls ?? []);
 	return withRetry(config.subagentRetries, async () => {
 		const proc = await runRoleProcess("collector", {
 			role: "collector",
@@ -214,7 +229,21 @@ export async function dispatchCollector(
 		}
 		return {
 			ok: true,
-			result: { items, degraded, plan: { queries: sanitized.queries, urls: sanitized.urls ?? [], bilibili: sourcePlan.filter((p) => p.tool === "fetch_bilibili").length, web: sourcePlan.filter((p) => p.tool === "fetch_web" || p.tool === "fetch_youtube").map((p) => String(p.args.url ?? "")), rss: sourcePlan.filter((p) => p.tool === "fetch_rss").map((p) => String(p.args.keyword_or_url ?? p.args.url ?? "")) } },
+			result: {
+				items,
+				degraded,
+				plan: {
+					queries: sanitized.queries,
+					urls: sanitized.urls ?? [],
+					bilibili: sourcePlan.filter((p) => p.tool === "fetch_bilibili").length,
+					web: sourcePlan
+						.filter((p) => p.tool === "fetch_web" || p.tool === "fetch_youtube")
+						.map((p) => String(p.args.url ?? "")),
+					rss: sourcePlan
+						.filter((p) => p.tool === "fetch_rss")
+						.map((p) => String(p.args.keyword_or_url ?? p.args.url ?? "")),
+				},
+			},
 			via: "subagent",
 		};
 	});
@@ -237,7 +266,10 @@ export async function dispatchVerifier(payload: VerifierPayload): Promise<Dispat
 	return withRetry(config.subagentRetries, async () => {
 		const proc = await runRoleProcess("verifier", {
 			role: "verifier",
-			payload: { claim: sanitized.claim, evidence: evidence.map((e) => ({ id: e.id, title: e.title, rawSnippet: e.rawSnippet })) },
+			payload: {
+				claim: sanitized.claim,
+				evidence: evidence.map((e) => ({ id: e.id, title: e.title, rawSnippet: e.rawSnippet })),
+			},
 		});
 		if (!proc.ok) return { ok: false, error: proc.error, via: "subagent" };
 		const emitted = captureEmitArgs(proc.messages, "emit_verifier_result") as { relevance?: unknown } | null;
@@ -250,11 +282,19 @@ export async function dispatchVerifier(payload: VerifierPayload): Promise<Dispat
 			const id = typeof row?.id === "string" ? row.id : null;
 			const rel = row?.relevance;
 			if (!id || (rel !== "on-topic" && rel !== "tangent" && rel !== "unknown")) {
-				return { ok: false, error: `质检相关性条目不合法（需 {id, relevance∈on-topic|tangent|unknown}）: ${JSON.stringify(row).slice(0, 120)}`, via: "subagent" };
+				return {
+					ok: false,
+					error: `质检相关性条目不合法（需 {id, relevance∈on-topic|tangent|unknown}）: ${JSON.stringify(row).slice(0, 120)}`,
+					via: "subagent",
+				};
 			}
 			override[id] = rel;
 		}
-		return { ok: true, result: runVerifier({ evidence, claim: sanitized.claim, focus: sanitized.focus, relevanceOverride: override }), via: "subagent" };
+		return {
+			ok: true,
+			result: runVerifier({ evidence, claim: sanitized.claim, focus: sanitized.focus, relevanceOverride: override }),
+			via: "subagent",
+		};
 	});
 }
 
@@ -272,7 +312,10 @@ export async function dispatchContrarian(payload: ContrarianPayload): Promise<Di
 		return { ok: true, result: runContrarian({ claim: sanitized.claim, evidence }), via: "stub" };
 	}
 	return withRetry(config.subagentRetries, async () => {
-		const proc = await runRoleProcess("contrarian", { role: "contrarian", payload: { claim: sanitized.claim, evidence } });
+		const proc = await runRoleProcess("contrarian", {
+			role: "contrarian",
+			payload: { claim: sanitized.claim, evidence },
+		});
 		if (!proc.ok) return { ok: false, error: proc.error, via: "subagent" };
 		const emitted = captureEmitArgs(proc.messages, "emit_contrarian_result") as ContrarianResult | null;
 		// #5 结构性守卫：必填键缺失即判失败并重试，绝不把残缺对象喂进置信度引擎
@@ -282,7 +325,11 @@ export async function dispatchContrarian(payload: ContrarianPayload): Promise<Di
 			!Array.isArray(emitted.lrAdjustments) ||
 			typeof emitted.couldNotRefute !== "boolean"
 		) {
-			return { ok: false, error: "反方子进程未通过 emit_contrarian_result 提交合法结果（缺 rebuttal/lrAdjustments/couldNotRefute）", via: "subagent" };
+			return {
+				ok: false,
+				error: "反方子进程未通过 emit_contrarian_result 提交合法结果（缺 rebuttal/lrAdjustments/couldNotRefute）",
+				via: "subagent",
+			};
 		}
 		return { ok: true, result: { ...emitted, claim: sanitized.claim }, via: "subagent" };
 	});
@@ -319,7 +366,9 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"派发质检 Agent（目标：准）。只收 evidence_ids（扩展侧解析为原文片段）与主张原文——质检在独立上下文里逐条打特征分。",
 		parameters: VerifierParams,
-		promptGuidelines: ["Use dispatch_verifier with evidence_ids from collected evidence; never pass scores or conclusions."],
+		promptGuidelines: [
+			"Use dispatch_verifier with evidence_ids from collected evidence; never pass scores or conclusions.",
+		],
 		async execute(_id, params) {
 			const outcome = await dispatchVerifier(params as VerifierPayload);
 			// LLM 主管路径：把质检产物并入共享运行态，并按裁决更新分支 label（占位路径不经此处）
@@ -341,7 +390,9 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"派发反方 Agent（目标：反，只推理不检索）。★ 参数 schema 只有 claim 与 evidence_ids——不存在能传递前序结论的字段，主管无法表达它就无法泄漏。",
 		parameters: ContrarianParams,
-		promptGuidelines: ["Use dispatch_contrarian with only the claim and evidence_ids; it attacks likelihood-ratio weights, not conclusions."],
+		promptGuidelines: [
+			"Use dispatch_contrarian with only the claim and evidence_ids; it attacks likelihood-ratio weights, not conclusions.",
+		],
 		async execute(_id, params) {
 			const outcome = await dispatchContrarian(params as ContrarianPayload);
 			// LLM 主管路径：反方产物并入运行态（供 finalize_report 计入 LR 调整与第 3 段）
@@ -388,7 +439,10 @@ export default function (pi: ExtensionAPI) {
 				lrAdjustments: Type.Array(
 					Type.Object(
 						{
-							feature: Type.String({ description: "被攻击的特征名（promoCode/authorDensity/staleness/sampleSize/channelAuthority/commentRebuttal）" }),
+							feature: Type.String({
+								description:
+									"被攻击的特征名（promoCode/authorDensity/staleness/sampleSize/channelAuthority/commentRebuttal）",
+							}),
 							multiplier: Type.Number({ description: "建议权重乘数，限定 0.2~5.0" }),
 							argument: Type.String({ description: "理由，须引用具体证据" }),
 						},

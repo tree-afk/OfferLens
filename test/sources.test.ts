@@ -7,16 +7,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
+import type { OfferLensConfig } from "../extensions/lib/config.ts";
 import {
 	ChannelUnavailableError,
 	createChannels,
 	createRateLimiter,
 	DiskCache,
+	type FetchLike,
 	parseFeed,
 	wbiSign,
-	type FetchLike,
 } from "../extensions/lib/sources.ts";
-import type { OfferLensConfig } from "../extensions/lib/config.ts";
 
 function tmpDir(prefix: string): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -104,8 +104,10 @@ describe("sources / rss", () => {
 
 	test("fetched via injected fetch：channelAuthority=official（最高可信权重）", async () => {
 		const xml = `<rss><channel><item><title>2027 届校招启动</title><link>https://a/1</link><pubDate>Tue, 01 Sep 2026 10:00:00 GMT</pubDate><description>官方公告正文内容</description></item></channel></rss>`;
-		const channels = createChannels(testConfig(tmpDir("ol-rss-")), (async () =>
-			new Response(xml, { status: 200, headers: { "content-type": "application/xml" } })) as FetchLike);
+		const channels = createChannels(
+			testConfig(tmpDir("ol-rss-")),
+			(async () => new Response(xml, { status: 200, headers: { "content-type": "application/xml" } })) as FetchLike,
+		);
 
 		const items = await channels.fetch_rss("https://a/feed.xml");
 		expect(items.length).toBeGreaterThan(0);
@@ -114,8 +116,10 @@ describe("sources / rss", () => {
 	});
 
 	test("RSS HTTP 失败 → 抛出（由上层计入信息缺口）", async () => {
-		const channels = createChannels(testConfig(tmpDir("ol-rss2-")), (async () =>
-			new Response("nope", { status: 500 })) as FetchLike);
+		const channels = createChannels(
+			testConfig(tmpDir("ol-rss2-")),
+			(async () => new Response("nope", { status: 500 })) as FetchLike,
+		);
 		await expect(channels.fetch_rss("https://a/feed.xml")).rejects.toThrow(/500/);
 	});
 
@@ -179,6 +183,8 @@ describe("sources / 基础设施", () => {
 	test("wbi 签名对参数变化敏感（不同关键词 → 不同签名）", () => {
 		const imgKey = "7cd084941338484aae1ad9425b84077c";
 		const subKey = "4932caff0ff746eab6f01bf08b70ac45";
-		expect(wbiSign({ keyword: "实习" }, imgKey, subKey).wRid).not.toBe(wbiSign({ keyword: "校招" }, imgKey, subKey).wRid);
+		expect(wbiSign({ keyword: "实习" }, imgKey, subKey).wRid).not.toBe(
+			wbiSign({ keyword: "校招" }, imgKey, subKey).wRid,
+		);
 	});
 });

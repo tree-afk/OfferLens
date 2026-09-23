@@ -4,10 +4,17 @@
  * 覆盖：第 5 段强制校验、信息缺口组装（"不做"也要可见）、确定性特征抽取、问题解析。
  */
 import { describe, expect, test } from "vitest";
-import { assembleGaps, ReportValidationError, validateSection5 } from "../extensions/lib/report.ts";
 import { computePosterior } from "../extensions/lib/calibration.ts";
-import { loadLikelihoodRatios, loadConfig } from "../extensions/lib/config.ts";
-import { classifyDensity, classifySampleSize, classifyStaleness, detectCommentRebuttal, detectPromoCode, parseQuestion } from "../extensions/lib/features.ts";
+import { loadConfig, loadLikelihoodRatios } from "../extensions/lib/config.ts";
+import {
+	classifyDensity,
+	classifySampleSize,
+	classifyStaleness,
+	detectCommentRebuttal,
+	detectPromoCode,
+	parseQuestion,
+} from "../extensions/lib/features.ts";
+import { assembleGaps, ReportValidationError, validateSection5 } from "../extensions/lib/report.ts";
 import type { CalibrationResult } from "../extensions/lib/types.ts";
 
 const LR = loadLikelihoodRatios();
@@ -63,7 +70,12 @@ describe("report 契约", () => {
 	});
 
 	test("样本量 <3 → 计入信息缺口", () => {
-		const calib = computePosterior([{ id: "e1", features: f(), notes: [] }], [{ id: "e1", channelAuthority: "ugc", platform: "bilibili" }], [], { lrTable: LR });
+		const calib = computePosterior(
+			[{ id: "e1", features: f(), notes: [] }],
+			[{ id: "e1", channelAuthority: "ugc", platform: "bilibili" }],
+			[],
+			{ lrTable: LR },
+		);
 		const gaps = assembleGaps({
 			evidence: [{ id: "e1" } as never],
 			calib,

@@ -5,11 +5,12 @@
  * 上下文——主管可以就报告继续对话），渲染用 Markdown 组件；
  * /report 把最近一次报告导出为 markdown 文件。
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Markdown } from "@earendil-works/pi-tui";
-import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+
 import fs from "node:fs";
 import path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { Markdown } from "@earendil-works/pi-tui";
 import { loadConfig } from "./lib/config.ts";
 import { runtime, setLastReport } from "./lib/runtime.ts";
 import { ensureDir } from "./lib/util.ts";
@@ -29,7 +30,10 @@ export default function (pi: ExtensionAPI) {
 			if (!last) {
 				// 从 reportsDir 找最新文件兜底
 				if (fs.existsSync(config.reportsDir)) {
-					const files = fs.readdirSync(config.reportsDir).filter((f) => f.endsWith(".md")).sort();
+					const files = fs
+						.readdirSync(config.reportsDir)
+						.filter((f) => f.endsWith(".md"))
+						.sort();
 					if (files.length) {
 						const text = fs.readFileSync(path.join(config.reportsDir, files[files.length - 1]), "utf8");
 						last = { markdown: text, posterior: -1 };

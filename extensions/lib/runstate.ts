@@ -6,8 +6,7 @@
  * 从而"主管是 LLM、但算分与报告仍是代码"。占位/程序化路径不经过这里（它有自己的局部状态）。
  */
 import { planHypotheses, verdict } from "./roles.ts";
-import type { Assessment, ContrarianResult, DegradedChannel, Hypothesis } from "./types.ts";
-import type { VerifierResult } from "./types.ts";
+import type { Assessment, ContrarianResult, DegradedChannel, Hypothesis, VerifierResult } from "./types.ts";
 
 export interface BranchState {
 	hypothesis: Hypothesis;
@@ -34,7 +33,14 @@ export function resetRun(question: string, claim: string): RunState {
 	const plan = planHypotheses(question, claim === question ? null : claim, null);
 	const branches = new Map<string, BranchState>();
 	for (const h of plan.hypotheses) {
-		branches.set(h.slug, { hypothesis: h, newEvidenceIds: [], assessments: [], contrarian: null, degraded: [], state: "open" });
+		branches.set(h.slug, {
+			hypothesis: h,
+			newEvidenceIds: [],
+			assessments: [],
+			contrarian: null,
+			degraded: [],
+			state: "open",
+		});
 	}
 	const st: RunState = { question, claim, startedAt: Date.now(), branches, branchOfId: new Map() };
 	registry.__offerlensRunState = st;

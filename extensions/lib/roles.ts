@@ -7,12 +7,12 @@
  *     （agents/*.md 作为 system prompt）+ 真实 LLM 在独立子进程中履行；
  *   - 桩的"智商"边界是刻意保留的：不做超出角色目标函数的事（见 agents/*.md）。
  */
-import { extractFeatures, classifyDensity, parseQuestion } from "./features.ts";
-import { truncate } from "./util.ts";
+import { classifyDensity, extractFeatures, parseQuestion } from "./features.ts";
 import type {
 	Assessment,
 	CollectorResult,
 	ContrarianResult,
+	EvidenceFeatures,
 	Hypothesis,
 	LrAdjustment,
 	ParsedQuestion,
@@ -20,8 +20,8 @@ import type {
 	SourcePlan,
 	SourcePlanEntry,
 	VerifierResult,
-	EvidenceFeatures,
 } from "./types.ts";
+import { truncate } from "./util.ts";
 
 /* ================================================================ */
 /* 主管：假设规划 + 裁决 + 放弃摘要                                    */
@@ -130,11 +130,15 @@ export function buildStubAbandonSummary(
 	const promo = assessments.filter((a) => a.features.promoCode.state === true).length;
 	const stale = assessments.filter((a) => a.features.staleness === "stale").length;
 	const supporting = assessments
-		.filter((a) => (hypothesis.slug === "stale" ? a.features.staleness === "stale" : a.features.promoCode.state === true))
+		.filter((a) =>
+			hypothesis.slug === "stale" ? a.features.staleness === "stale" : a.features.promoCode.state === true,
+		)
 		.map((a) => a.id)
 		.slice(0, 5);
 	const opposing = assessments
-		.filter((a) => (hypothesis.slug === "stale" ? a.features.staleness === "current" : a.features.promoCode.state === false))
+		.filter((a) =>
+			hypothesis.slug === "stale" ? a.features.staleness === "current" : a.features.promoCode.state === false,
+		)
 		.map((a) => a.id)
 		.slice(0, 5);
 	return [
@@ -189,7 +193,11 @@ export async function runCollector(
 			const pages = isYt ? await tools.fetch_youtube(u) : await tools.fetch_web(u);
 			items.push(...pages.map((p) => ({ ...p, viaHypothesis: input.hypothesis, fromUserUrl: true })));
 		} catch (e) {
-			degraded.push({ channel: /youtube\.com|youtu\.be/.test(u) ? "youtube" : "web", query: u, reason: truncate((e as Error).message, 160) });
+			degraded.push({
+				channel: /youtube\.com|youtu\.be/.test(u) ? "youtube" : "web",
+				query: u,
+				reason: truncate((e as Error).message, 160),
+			});
 			onDegraded?.(degraded[degraded.length - 1]);
 		}
 	}
@@ -261,7 +269,23 @@ export interface VerifierInputItem {
 }
 
 const STOP_BIGRAM = /[的了吗呢吧是了了个这那]/;
-const DOMAIN_TERMS = ["实习", "校招", "秋招", "春招", "转正", "offer", "Offer", "面经", "笔试", "招聘", "内推", "简历", "留用", "OC", "网申"];
+const DOMAIN_TERMS = [
+	"实习",
+	"校招",
+	"秋招",
+	"春招",
+	"转正",
+	"offer",
+	"Offer",
+	"面经",
+	"笔试",
+	"招聘",
+	"内推",
+	"简历",
+	"留用",
+	"OC",
+	"网申",
+];
 
 function claimTerms(claim: string): string[] {
 	const terms = new Set<string>();
@@ -279,7 +303,10 @@ function claimTerms(claim: string): string[] {
 }
 
 /** 相关性门（确定性）：中文 2-gram 重叠 + 领域词双通道。跑题证据不参与后验。 */
-export function assessRelevance(raw: { title?: string | null; rawSnippet?: string | null }, claim: string | undefined | null): EvidenceFeatures["relevance"] {
+export function assessRelevance(
+	raw: { title?: string | null; rawSnippet?: string | null },
+	claim: string | undefined | null,
+): EvidenceFeatures["relevance"] {
 	const text = `${raw.title ?? ""}\n${raw.rawSnippet ?? ""}`;
 	if (!claim) return "unknown";
 	const lower = text.toLowerCase();
@@ -311,7 +338,7 @@ export function runVerifier(input: {
 				rawSnippet: r.rawSnippet,
 				publishedAt: r.publishedAt,
 				comments: r.comments ?? null,
-				authorFeatures: { recentSameTopicCount: r.author ? authorCounts.get(r.author) ?? null : null },
+				authorFeatures: { recentSameTopicCount: r.author ? (authorCounts.get(r.author) ?? null) : null },
 			},
 			now,
 		);
@@ -319,8 +346,10 @@ export function runVerifier(input: {
 		const notes: string[] = [];
 		if (features.relevance === "tangent") notes.push("与主张无直接关联（排除出后验）");
 		if (features.promoCode.state === true) notes.push(`含引流要素: ${features.excerpts.promoHits.join(" / ")}`);
-		if (features.sampleSize === "personal") notes.push(`个例叙述（${features.excerpts.sampleSizeHint ?? "我认识的人"}式）`);
-		if (features.staleness === "stale" && features.daysAgo != null) notes.push(`发布于 ${features.daysAgo} 天前，超出一个招聘季`);
+		if (features.sampleSize === "personal")
+			notes.push(`个例叙述（${features.excerpts.sampleSizeHint ?? "我认识的人"}式）`);
+		if (features.staleness === "stale" && features.daysAgo != null)
+			notes.push(`发布于 ${features.daysAgo} 天前，超出一个招聘季`);
 		if (features.staleness === "unknown") notes.push("无可靠发布时间");
 		if (features.authorDensity === "high") notes.push("语料内同作者多条同主题内容（代理指标）");
 		if (features.commentRebuttal === "hasRebuttal") notes.push("评论区存在反驳声音");
@@ -364,12 +393,21 @@ type ContrarianInput = {
 
 export function runContrarian(input: ContrarianInput): ContrarianResult {
 	const { claim, evidence: raws } = input;
-	const arguments_: Array<{ target: string; feature: string; multiplier: number; argument: string; evidenceIds: string[] }> = [];
+	const arguments_: Array<{
+		target: string;
+		feature: string;
+		multiplier: number;
+		argument: string;
+		evidenceIds: string[];
+	}> = [];
 
-	const features = raws.map((r) => extractFeatures({ ...r, authorFeatures: { recentSameTopicCount: null } }, Date.now()));
+	const features = raws.map((r) =>
+		extractFeatures({ ...r, authorFeatures: { recentSameTopicCount: null } }, Date.now()),
+	);
 
 	const rateLike = /率|比例|多少|几个/.test(claim);
-	const personalAll = raws.length > 0 && features.every((f) => f.sampleSize === "personal" || f.sampleSize === "unknown");
+	const personalAll =
+		raws.length > 0 && features.every((f) => f.sampleSize === "personal" || f.sampleSize === "unknown");
 
 	// 攻击 1：比率型主张 × 个例证据
 	if (rateLike && personalAll) {
@@ -416,7 +454,8 @@ export function runContrarian(input: ContrarianInput): ContrarianResult {
 	}
 
 	// 攻击 4：UGC 无官方口径（幸存者偏差）
-	const allUgc = raws.length > 0 && raws.every((r) => (r.platform ?? "") === "bilibili" || (r.platform ?? "") === "youtube");
+	const allUgc =
+		raws.length > 0 && raws.every((r) => (r.platform ?? "") === "bilibili" || (r.platform ?? "") === "youtube");
 	const noOfficial = !raws.some((r) => r.channelAuthority === "official");
 	if (allUgc && noOfficial) {
 		arguments_.push({
@@ -446,7 +485,11 @@ export function runContrarian(input: ContrarianInput): ContrarianResult {
 		});
 	}
 
-	const lrAdjustments: LrAdjustment[] = arguments_.map((a) => ({ feature: a.feature, multiplier: a.multiplier, argument: a.argument }));
+	const lrAdjustments: LrAdjustment[] = arguments_.map((a) => ({
+		feature: a.feature,
+		multiplier: a.multiplier,
+		argument: a.argument,
+	}));
 	const couldNotRefute = arguments_.length === 0;
 	const rebuttal = [
 		`> 以下为反方 Agent 原始输出（未被主管改写）。攻击对象是似然比的取值，不是结论本身。`,
@@ -457,7 +500,9 @@ export function runContrarian(input: ContrarianInput): ContrarianResult {
 			? `**未能构造出反驳**。现有证据（${raws.length} 条）在时效、样本结构、引流要素、来源结构上` +
 				`均未发现可攻击的折算：官方口径存在、时效正常、无引流要素。这不构成对主张的支持证明——` +
 				`反方从不出具"可信"证明，最多出具"我攻不动"。`
-			: arguments_.map((a, i) => `**反驳 ${i + 1}（${a.target}，特征 \`${a.feature}\` 权重 ×${a.multiplier}）**\n${a.argument}`).join("\n\n"),
+			: arguments_
+					.map((a, i) => `**反驳 ${i + 1}（${a.target}，特征 \`${a.feature}\` 权重 ×${a.multiplier}）**\n${a.argument}`)
+					.join("\n\n"),
 	].join("\n");
 
 	return { rebuttal, lrAdjustments, couldNotRefute, claim };

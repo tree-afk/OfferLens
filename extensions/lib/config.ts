@@ -1,7 +1,7 @@
 /** OfferLens 运行时配置 —— config/config.json + config/likelihood-ratios.json。 */
 import path from "node:path";
-import { packageRoot, readJsonIfExists } from "./util.ts";
 import type { CalibrationResult } from "./types.ts";
+import { packageRoot, readJsonIfExists } from "./util.ts";
 
 export interface OfferLensConfig {
 	_doc?: string;
@@ -56,7 +56,13 @@ const DEFAULTS: OfferLensConfig = {
 
 function deepMerge<T>(base: T, over: unknown): T {
 	if (over === undefined || over === null) return base;
-	if (typeof base !== "object" || base === null || typeof over !== "object" || Array.isArray(base) || Array.isArray(over)) {
+	if (
+		typeof base !== "object" ||
+		base === null ||
+		typeof over !== "object" ||
+		Array.isArray(base) ||
+		Array.isArray(over)
+	) {
 		return over as T;
 	}
 	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };

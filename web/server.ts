@@ -25,19 +25,16 @@
  * 运行：node web/server.ts （Node ≥ 22.18 原生剥离类型；或用 pi 的 jiti 加载）
  * 端口：PORT（默认 8787）/ HOST（默认 127.0.0.1）
  */
-import http from "node:http";
+
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { loadConfig } from "../extensions/lib/config.ts";
-import { createChannels } from "../extensions/lib/sources.ts";
 import { sharedEvidenceIndex } from "../extensions/lib/evidence.ts";
-import {
-	createStubExecutor,
-	runCheckFlow,
-	type OrchestrationHooks,
-} from "../extensions/lib/orchestrator.ts";
-import { ensureDir, truncate } from "../extensions/lib/util.ts";
+import { createStubExecutor, type OrchestrationHooks, runCheckFlow } from "../extensions/lib/orchestrator.ts";
+import { createChannels } from "../extensions/lib/sources.ts";
 import type { EvidenceRecord, Hypothesis } from "../extensions/lib/types.ts";
+import { ensureDir, truncate } from "../extensions/lib/util.ts";
 
 const __dirname = import.meta.dirname;
 const config = loadConfig();
@@ -88,7 +85,10 @@ function sseWrite(res: http.ServerResponse, evt: unknown): void {
  * 「done」事件被刻意吞掉 —— 由调用方在报告落盘之后再统一发出，避免前端在 done 时
  * 立刻拉取 /api/report 却读到尚未写入的文件。
  */
-function createSessionHooks(sessionId: string): { hooks: OrchestrationHooks; emit: (type: string, data: unknown) => void } {
+function createSessionHooks(sessionId: string): {
+	hooks: OrchestrationHooks;
+	emit: (type: string, data: unknown) => void;
+} {
 	const emit = (type: string, data: unknown): void => {
 		const evt = { type, data, at: new Date().toISOString() };
 		persistEvent(sessionId, evt);
@@ -122,7 +122,13 @@ function createSessionHooks(sessionId: string): { hooks: OrchestrationHooks; emi
 			persistEntry(sessionId, { type: "custom", customType: "label", entryId, label, at: new Date().toISOString() });
 		},
 		appendAbandonSummary: (slug, summary) => {
-			persistEntry(sessionId, { type: "custom", customType: "hypothesis-summary", slug, summary, at: new Date().toISOString() });
+			persistEntry(sessionId, {
+				type: "custom",
+				customType: "hypothesis-summary",
+				slug,
+				summary,
+				at: new Date().toISOString(),
+			});
 			emit("hypothesis_summary", { slug, summary });
 		},
 	};
@@ -242,7 +248,7 @@ const server = http.createServer(async (req, res) => {
 			reg.listeners.add(res);
 			req.on("close", () => reg.listeners.delete(res));
 		} else {
-			res.write("data: {\"type\":\"done\"}\n\n"); // 无实时流：重放结束即 done
+			res.write('data: {"type":"done"}\n\n'); // 无实时流：重放结束即 done
 			res.end();
 		}
 		return;

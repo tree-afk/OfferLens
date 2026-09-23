@@ -16,18 +16,19 @@
  * 本扩展的 /check 命令同名冲突（Pi 会注册成 /check:1 /check:2）；
  * 模板作为数据被 /check 读取并注入，语义等价且路由可控。
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig } from "./lib/config.ts";
-import { runCheckFlow, type CheckResult, type OrchestrationHooks, type RoleExecutor } from "./lib/orchestrator.ts";
-import { sharedEvidenceIndex } from "./lib/evidence.ts";
-import { runtime, setLastReport } from "./lib/runtime.ts";
-import { PLACEHOLDER_PROVIDER } from "./lib/provider-placeholder.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { dispatchCollector, dispatchContrarian, dispatchVerifier } from "./isolation.ts";
+import { loadConfig } from "./lib/config.ts";
+import { sharedEvidenceIndex } from "./lib/evidence.ts";
+import { type CheckResult, type OrchestrationHooks, type RoleExecutor, runCheckFlow } from "./lib/orchestrator.ts";
+import { PLACEHOLDER_PROVIDER } from "./lib/provider-placeholder.ts";
 import { HYPOTHESIS_ABANDON_PROMPT } from "./lib/roles.ts";
-import { packageRoot, ensureDir } from "./lib/util.ts";
+import { runtime, setLastReport } from "./lib/runtime.ts";
 import type { ContrarianResult, Hypothesis } from "./lib/types.ts";
+import { ensureDir, packageRoot } from "./lib/util.ts";
 
 /** 命令 ctx 上用到的只读会话视图（Pi 的 ReadonlySessionManager 子集）。 */
 interface SessionView {
@@ -129,7 +130,10 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const parsed = parseCheckArgs(args);
 			if (!parsed.question) {
-				ctx.ui.notify("用法：/check 字节 2027 届前端实习转正率　或　/check --url <链接> --claim <主张> <问题>", "error");
+				ctx.ui.notify(
+					"用法：/check 字节 2027 届前端实习转正率　或　/check --url <链接> --claim <主张> <问题>",
+					"error",
+				);
 				return;
 			}
 			const model = ctx.model as { provider?: string } | null;
@@ -139,7 +143,10 @@ export default function (pi: ExtensionAPI) {
 				// 真实模型路径：模板注入，LLM 驱动同一组 dispatch 工具
 				ctx.ui.notify(`已交给当前模型（${model.provider}）按 check 工作流驱动派发工具…`, "info");
 				pi.sendUserMessage(
-					loadTemplate("check", `${parsed.question}${parsed.claim ? ` --claim ${parsed.claim}` : ""}${parsed.url ? ` --url ${parsed.url}` : ""}`),
+					loadTemplate(
+						"check",
+						`${parsed.question}${parsed.claim ? ` --claim ${parsed.claim}` : ""}${parsed.url ? ` --url ${parsed.url}` : ""}`,
+					),
 				);
 				return;
 			}
@@ -148,7 +155,11 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.setStatus("offerlens", "甄别运行中…");
 			try {
 				const result = await runProgrammaticCheck(parsed, ctx.sessionManager as SessionView, (type, data) => {
-					if (type === "hypothesis") ctx.ui.setStatus("offerlens", `hyp/${(data as { slug: string }).slug} → ${(data as { state: string }).state}`);
+					if (type === "hypothesis")
+						ctx.ui.setStatus(
+							"offerlens",
+							`hyp/${(data as { slug: string }).slug} → ${(data as { state: string }).state}`,
+						);
 					else if (type === "degraded") ctx.ui.setStatus("offerlens", `降级: ${(data as { channel: string }).channel}`);
 				});
 				ctx.ui.setStatus("offerlens", undefined);
@@ -184,10 +195,19 @@ export default function (pi: ExtensionAPI) {
 			}
 			ctx.ui.setStatus("offerlens", "扫描运行中…");
 			try {
-				const result = await runProgrammaticCheck({ question, claim: null, url: null }, ctx.sessionManager as SessionView, () => {});
+				const result = await runProgrammaticCheck(
+					{ question, claim: null, url: null },
+					ctx.sessionManager as SessionView,
+					() => {},
+				);
 				ctx.ui.setStatus("offerlens", undefined);
 				pi.sendMessage(
-					{ customType: "offerlens-report", content: result.markdown, display: true, details: { posterior: result.posterior } },
+					{
+						customType: "offerlens-report",
+						content: result.markdown,
+						display: true,
+						details: { posterior: result.posterior },
+					},
 					{ triggerTurn: false },
 				);
 			} catch (e) {
@@ -217,7 +237,12 @@ export default function (pi: ExtensionAPI) {
 			const entries = ctx.sessionManager.getEntries();
 			const target = [...entries]
 				.reverse()
-				.find((e) => e.type === "custom" && (e as { customType?: string }).customType === "hypothesis" && ((e as { data?: { slug?: string } }).data?.slug === slug));
+				.find(
+					(e) =>
+						e.type === "custom" &&
+						(e as { customType?: string }).customType === "hypothesis" &&
+						(e as { data?: { slug?: string } }).data?.slug === slug,
+				);
 			if (!target) {
 				ctx.ui.notify(`未找到 hyp/${slug} 的分支 entry（先运行 /check）`, "error");
 				return;

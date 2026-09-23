@@ -7,11 +7,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { loadConfig } from "./lib/config.ts";
-import { createChannels, type ChannelUnavailableError } from "./lib/sources.ts";
-import { truncate } from "./lib/util.ts";
 import { getPlaceholderProvider } from "./lib/provider-placeholder.ts";
 import { setRuntime } from "./lib/runtime.ts";
+import { type ChannelUnavailableError, createChannels } from "./lib/sources.ts";
 import type { RawItem } from "./lib/types.ts";
+import { truncate } from "./lib/util.ts";
 
 export default function (pi: ExtensionAPI) {
 	const config = loadConfig();
@@ -38,7 +38,10 @@ export default function (pi: ExtensionAPI) {
 			async execute(_id, params) {
 				try {
 					const items = await run({ keyword_or_url: params.keyword_or_url });
-					return { content: [{ type: "text" as const, text: JSON.stringify(items) }], details: { count: items.length, degraded: false } };
+					return {
+						content: [{ type: "text" as const, text: JSON.stringify(items) }],
+						details: { count: items.length, degraded: false },
+					};
 				} catch (e) {
 					// 通道不可达是结构化事实（计入信息缺口），不是崩溃
 					const err = e as ChannelUnavailableError | Error;
@@ -52,10 +55,18 @@ export default function (pi: ExtensionAPI) {
 		});
 	};
 
-	mkFetchTool("fetch_bilibili", "B站搜索", "搜索 B 站视频（UGC 主力源，wbi 签名直连公开 API，零登录）", (a) => channels.fetch_bilibili(a.keyword_or_url));
-	mkFetchTool("fetch_web", "网页抓取", "抓取网页正文（Jina Reader → 直连抓取，三级降级）", (a) => channels.fetch_web(a.keyword_or_url));
-	mkFetchTool("fetch_rss", "RSS解析", "解析 RSS/Atom 官方公告源（channelAuthority=official，最高可信权重）", (a) => channels.fetch_rss(a.keyword_or_url));
-	mkFetchTool("fetch_youtube", "YouTube字幕", "取 YouTube 视频字幕（yt-dlp，未安装则如实降级）", (a) => channels.fetch_youtube(a.keyword_or_url));
+	mkFetchTool("fetch_bilibili", "B站搜索", "搜索 B 站视频（UGC 主力源，wbi 签名直连公开 API，零登录）", (a) =>
+		channels.fetch_bilibili(a.keyword_or_url),
+	);
+	mkFetchTool("fetch_web", "网页抓取", "抓取网页正文（Jina Reader → 直连抓取，三级降级）", (a) =>
+		channels.fetch_web(a.keyword_or_url),
+	);
+	mkFetchTool("fetch_rss", "RSS解析", "解析 RSS/Atom 官方公告源（channelAuthority=official，最高可信权重）", (a) =>
+		channels.fetch_rss(a.keyword_or_url),
+	);
+	mkFetchTool("fetch_youtube", "YouTube字幕", "取 YouTube 视频字幕（yt-dlp，未安装则如实降级）", (a) =>
+		channels.fetch_youtube(a.keyword_or_url),
+	);
 
 	pi.registerCommand("doctor", {
 		description: "OfferLens 通道自检：逐条探测四个内容源 + 显式声明小红书不做 + 当前派发模式",

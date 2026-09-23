@@ -1,6 +1,7 @@
 /** 可数特征抽取 —— 置信度引擎的原料（确定性规则，非模型）。 */
-import { truncate } from "./util.ts";
+
 import type { EvidenceFeatures, ParsedQuestion, SampleSize, Staleness } from "./types.ts";
+import { truncate } from "./util.ts";
 
 const PROMO_PATTERNS: RegExp[] = [
 	/内推码/i,
@@ -107,9 +108,35 @@ export function extractFeatures(
 /* ---------------- 问题解析（主管规划输入） ---------------- */
 
 const COMPANY_DICT = [
-	"字节跳动", "字节", "腾讯", "阿里", "阿里巴巴", "美团", "拼多多", "百度", "华为", "京东",
-	"小米", "网易", "b站", "哔哩哔哩", "bilibili", "快手", "滴滴", "网易雷火", "米哈游",
-	"莉莉丝", "深信服", "海康威视", "大疆", "微软", "google", "谷歌", "apple", "苹果", "亚马逊",
+	"字节跳动",
+	"字节",
+	"腾讯",
+	"阿里",
+	"阿里巴巴",
+	"美团",
+	"拼多多",
+	"百度",
+	"华为",
+	"京东",
+	"小米",
+	"网易",
+	"b站",
+	"哔哩哔哩",
+	"bilibili",
+	"快手",
+	"滴滴",
+	"网易雷火",
+	"米哈游",
+	"莉莉丝",
+	"深信服",
+	"海康威视",
+	"大疆",
+	"微软",
+	"google",
+	"谷歌",
+	"apple",
+	"苹果",
+	"亚马逊",
 ];
 
 export function parseQuestion(input: string): ParsedQuestion {
@@ -117,8 +144,9 @@ export function parseQuestion(input: string): ParsedQuestion {
 	const lower = text.toLowerCase();
 	const companies = COMPANY_DICT.filter((c) => lower.includes(c.toLowerCase()));
 	const normalized = [...new Set(companies.map((c) => (c === "哔哩哔哩" || c === "b站" ? "bilibili" : c)))];
-	const kind: ParsedQuestion["kind"] =
-		/转正|留用|offer|背调|毁约|拖欠|避雷|真假|靠谱|真实|内推|坑/.test(text) ? "claim-like" : "info";
+	const kind: ParsedQuestion["kind"] = /转正|留用|offer|背调|毁约|拖欠|避雷|真假|靠谱|真实|内推|坑/.test(text)
+		? "claim-like"
+		: "info";
 	const rateLike = /率|比例|多少|几个/.test(text);
 	return { raw: text, companies: normalized, kind, rateLike, queries: buildQueries(text, normalized) };
 }

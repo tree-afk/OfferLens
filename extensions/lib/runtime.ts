@@ -16,7 +16,11 @@ export function setRuntime(pi: ExtensionAPI, channels: ChannelSet): void {
 	registry.__offerlensRuntime = { ...(registry.__offerlensRuntime ?? {}), pi, channels } as never;
 }
 
-export function runtime(): { pi: ExtensionAPI; channels: ChannelSet; lastReport?: { markdown: string; posterior: number } } {
+export function runtime(): {
+	pi: ExtensionAPI;
+	channels: ChannelSet;
+	lastReport?: { markdown: string; posterior: number };
+} {
 	if (!registry.__offerlensRuntime) throw new Error("OfferLens runtime 未初始化（extension 加载顺序错误）");
 	return registry.__offerlensRuntime;
 }

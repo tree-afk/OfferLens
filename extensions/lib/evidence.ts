@@ -6,8 +6,9 @@
  *     LLM 上下文）—— 本模块只维护进程内索引，session_start 时从
  *     ctx.sessionManager.getEntries() 重建。
  */
-import { nowIso, sha1, truncate } from "./util.ts";
+
 import type { EvidenceRecord, RawItem } from "./types.ts";
+import { nowIso, sha1, truncate } from "./util.ts";
 
 export interface EvidenceEntryLike {
 	id: string;
@@ -40,9 +41,7 @@ export class EvidenceIndex {
 	 * 返回的 record 由调用方（扩展层）负责 pi.appendEntry 持久化。
 	 */
 	prepare(raw: RawItem): { record: EvidenceRecord; deduped: boolean } {
-		const contentHash = sha1(
-			`${raw.platform}::${raw.url ?? ""}::${truncate(raw.rawSnippet ?? raw.title ?? "", 2000)}`,
-		);
+		const contentHash = sha1(`${raw.platform}::${raw.url ?? ""}::${truncate(raw.rawSnippet ?? raw.title ?? "", 2000)}`);
 		const existingHash = this.hashIndex.get(contentHash);
 		if (existingHash) {
 			return { record: this.index.get(existingHash)!, deduped: true };
@@ -83,7 +82,9 @@ export class EvidenceIndex {
 	}
 
 	/** 派发侧解析：evidence_ids -> 原文片段（★ 子 Agent 拿到的只有原文，别无他物）。 */
-	resolveRawSnippets(ids: string[]): Array<Pick<EvidenceRecord, "id" | "platform" | "title" | "publishedAt" | "author" | "rawSnippet">> {
+	resolveRawSnippets(
+		ids: string[],
+	): Array<Pick<EvidenceRecord, "id" | "platform" | "title" | "publishedAt" | "author" | "rawSnippet">> {
 		return ids.map((id) => {
 			const ev = this.get(id);
 			if (!ev) throw new Error(`evidence_id 不存在: ${id}`);

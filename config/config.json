@@ -1,49 +1,47 @@
 {
-  "_doc": "OfferLens 主配置（Pi 包形态）。模型与凭据管理由 Pi 提供（pi 进程自带模型切换与 API key 管理），本文件只管扩展运行时：内容源通道、结构化置信度、派发模式与落盘目录。",
-  "dispatchMode": "subagent",
-  "subagentRetries": 2,
-  "subagentRetries_doc": "subagent 模式下角色子进程未通过 emit 工具提交合法结果时的重试次数（每次重派一个全新子进程；读不到就报错重试，不做文本 JSON 兜底）。",
-  "dispatchMode_doc": "stub = 进程内确定性占位执行（默认，不接任何 API）；subagent = 经 vendored subagent 扩展派发独立 pi 子进程（需 Pi 运行时）。两种模式下 schema 约束完全一致。",
-  "sources": {
-    "_doc": "内容源通道。每通道按 channels 数组顺序降级：主通道 → 备用通道 → 标记信息缺口。cacheTtlMs 24h，minIntervalMs 限速。",
-    "cacheTtlMs": 86400000,
-    "cacheDir": ".offerlens/cache",
-    "maxItemsPerSource": 6,
-    "fetchTimeoutMs": 20000,
-    "bilibili": {
-      "enabled": true,
-      "minIntervalMs": 1500,
-      "maxPages": 1,
-      "fetchComments": true
-    },
-    "web": {
-      "enabled": true,
-      "minIntervalMs": 800,
-      "jinaBaseUrl": "https://r.jina.ai/"
-    },
-    "rss": {
-      "enabled": true,
-      "minIntervalMs": 500,
-      "feeds": [
-        "https://github.blog/feed/"
-      ]
-    },
-    "youtube": {
-      "enabled": true,
-      "minIntervalMs": 800
-    }
-  },
-  "calibration": {
-    "_doc": "结构化置信度：朴素贝叶斯形式的 log-odds 叠加，权重手工设定（启发式，非校准——没有标注集就没有 ground truth）。priorLogodds 是对数先验几率（0 = P(可靠)=0.5）。sensitivityDeltaThreshold：中和某特征后验变化超过该值 → 判定'结论悬在该特征上'，自动进入第 5 段信息缺口。",
-    "priorLogodds": 0,
-    "sensitivityDeltaThreshold": 0.2,
-    "contrarianAdjustmentCap": { "min": 0.2, "max": 5.0 }
-  },
-  "reportsDir": ".offerlens/reports",
-  "sessionDir": ".offerlens/sessions",
-  "web": {
-    "_doc": "Web SSE 桥（node web/server.ts）监听地址；亦可用 PORT / HOST 环境变量覆盖。",
-    "host": "127.0.0.1",
-    "port": 8787
-  }
+	"_doc": "OfferLens 主配置（Pi 包形态）。模型与凭据管理由 Pi 提供（pi 进程自带模型切换与 API key 管理），本文件只管扩展运行时：内容源通道、结构化置信度、派发模式与落盘目录。",
+	"dispatchMode": "subagent",
+	"subagentRetries": 2,
+	"subagentRetries_doc": "subagent 模式下角色子进程未通过 emit 工具提交合法结果时的重试次数（每次重派一个全新子进程；读不到就报错重试，不做文本 JSON 兜底）。",
+	"dispatchMode_doc": "stub = 进程内确定性占位执行（默认，不接任何 API）；subagent = 经 vendored subagent 扩展派发独立 pi 子进程（需 Pi 运行时）。两种模式下 schema 约束完全一致。",
+	"sources": {
+		"_doc": "内容源通道。每通道按 channels 数组顺序降级：主通道 → 备用通道 → 标记信息缺口。cacheTtlMs 24h，minIntervalMs 限速。",
+		"cacheTtlMs": 86400000,
+		"cacheDir": ".offerlens/cache",
+		"maxItemsPerSource": 6,
+		"fetchTimeoutMs": 20000,
+		"bilibili": {
+			"enabled": true,
+			"minIntervalMs": 1500,
+			"maxPages": 1,
+			"fetchComments": true
+		},
+		"web": {
+			"enabled": true,
+			"minIntervalMs": 800,
+			"jinaBaseUrl": "https://r.jina.ai/"
+		},
+		"rss": {
+			"enabled": true,
+			"minIntervalMs": 500,
+			"feeds": ["https://github.blog/feed/"]
+		},
+		"youtube": {
+			"enabled": true,
+			"minIntervalMs": 800
+		}
+	},
+	"calibration": {
+		"_doc": "结构化置信度：朴素贝叶斯形式的 log-odds 叠加，权重手工设定（启发式，非校准——没有标注集就没有 ground truth）。priorLogodds 是对数先验几率（0 = P(可靠)=0.5）。sensitivityDeltaThreshold：中和某特征后验变化超过该值 → 判定'结论悬在该特征上'，自动进入第 5 段信息缺口。",
+		"priorLogodds": 0,
+		"sensitivityDeltaThreshold": 0.2,
+		"contrarianAdjustmentCap": { "min": 0.2, "max": 5.0 }
+	},
+	"reportsDir": ".offerlens/reports",
+	"sessionDir": ".offerlens/sessions",
+	"web": {
+		"_doc": "Web SSE 桥（node web/server.ts）监听地址；亦可用 PORT / HOST 环境变量覆盖。",
+		"host": "127.0.0.1",
+		"port": 8787
+	}
 }

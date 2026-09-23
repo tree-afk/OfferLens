@@ -1,67 +1,67 @@
 {
-  "_doc": "似然比配置表（★ 手工设定、可调、明确标注为启发式）。语义：以「信息可靠」为目标事件，每条证据的可数特征独立贡献 log-odds：logodds += Σ lr_f(特征取值)。正数推高可靠，负数推低。特征方向对应『软广特征』：含优惠码/高密度发文/个人样本 → 推低可靠。contrarianAdjustable: 反方 Agent 允许攻击该特征的 LR 取值（乘以 0.2~5.0 的有界系数），被攻击且主导后验的特征自动进信息缺口。",
-  "target": "信息可靠（相对于软广/过期/样本不足）",
-  "features": {
-    "promoCode": {
-      "_doc": "是否含优惠码/内推码/引流联系方式。布尔。false 只是'未见引流要素'，是很弱的正向证据（0.05）——不能把没有坏消息当好消息重仓。",
-      "lr": { "true": -1.2, "false": 0.05, "unknown": 0 },
-      "contrarianAdjustable": true,
-      "direction": "含 → 推低（软广特征）"
-    },
-    "authorDensity": {
-      "_doc": "作者近 30 天同主题发文密度。此处用'检索语料内同作者条目数'作代理（densityProxy=in-corpus），无法计算时取 unknown。计数 c：<2 低密度, 2-4 中, >4 高。",
-      "lr": { "low": 0.1, "mid": -0.3, "high": -0.9, "unknown": 0 },
-      "contrarianAdjustable": true,
-      "direction": "高密度 → 推低（垂类博主例外主张可被反方攻击）"
-    },
-    "staleness": {
-      "_doc": "时效：信息发布时间距今。current=<90 天; stale=>=90 天; unknown=无时间戳（0 贡献，不猜）。与官方公告时间差在官方源存在时另行叠加 officialTiming。",
-      "lr": { "current": 0.3, "stale": -0.8, "unknown": 0 },
-      "contrarianAdjustable": false,
-      "direction": "过期 → 推低"
-    },
-    "sampleSize": {
-      "_doc": "声称的样本量。personal='我认识的人/我同学'式个例; small=可数的少量样本; unlabelled=群体性/无法归类; unknown=无法判定（0 贡献）。",
-      "lr": { "personal": -0.7, "small": -0.2, "unlabelled": 0.05, "unknown": 0 },
-      "contrarianAdjustable": true,
-      "direction": "个例 → 推低"
-    },
-    "relevance": {
-      "_doc": "质检的相关性门（gate，不是方向）：on-topic=与主张直接相关; tangent=跑题条目——贡献置零并排除出后验（跑题的证据不是证据）。由质检确定性判定。",
-      "lr": { "on-topic": 0, "tangent": 0, "unknown": 0 },
-      "contrarianAdjustable": false,
-      "direction": "tangent → 排除出后验（不贡献）"
-    },
-    "channelAuthority": {
-      "_doc": "来源通道可信度：official=官方公告源(RSS/官网) 最高权重; ugc=UGC 平台(B站/YouTube); web=普通网页。",
-      "lr": { "official": 1.0, "ugc": 0, "web": -0.1 },
-      "contrarianAdjustable": false,
-      "direction": "官方 → 推高"
-    },
-    "commentRebuttal": {
-      "_doc": "评论区是否存在反驳。hasRebuttal=true 推低（同主题被质疑）; false 且高阅读 → 弱推低（幸存者偏差）; unknown 不计。评论区不可达时 unknown。",
-      "lr": { "hasRebuttal": -0.5, "none": -0.15, "unknown": 0 },
-      "contrarianAdjustable": true,
-      "direction": "有反驳 → 推低"
-    }
-  },
-  "corpusFeatures": {
-    "_doc": "证据**结构**层面的调整（语料级，非单条级；手工设定）。缺失官方口径、单平台、个例主导，这些结构性缺陷是单条特征的叠加看不到的。",
-    "noOfficialSource": {
-      "condition": "全部证据均非官方口径",
-      "logodds": -0.6
-    },
-    "singlePlatformOnly": {
-      "condition": "全部证据来自单一平台",
-      "logodds": -0.3
-    },
-    "majorityPersonal": {
-      "condition": "过半证据为个例叙述",
-      "logodds": -0.6
-    }
-  },
-  "saturation": {
-    "_doc": "相关性折扣：同特征的 N 条证据贡献不是独立的（同质语料、算法同温层），按 tanh(Σ/scale)×scale 饱和。30 条同质'无引流要素'不能当 30 条独立证据叠加。",
-    "scale": 1.5
-  }
+	"_doc": "似然比配置表（★ 手工设定、可调、明确标注为启发式）。语义：以「信息可靠」为目标事件，每条证据的可数特征独立贡献 log-odds：logodds += Σ lr_f(特征取值)。正数推高可靠，负数推低。特征方向对应『软广特征』：含优惠码/高密度发文/个人样本 → 推低可靠。contrarianAdjustable: 反方 Agent 允许攻击该特征的 LR 取值（乘以 0.2~5.0 的有界系数），被攻击且主导后验的特征自动进信息缺口。",
+	"target": "信息可靠（相对于软广/过期/样本不足）",
+	"features": {
+		"promoCode": {
+			"_doc": "是否含优惠码/内推码/引流联系方式。布尔。false 只是'未见引流要素'，是很弱的正向证据（0.05）——不能把没有坏消息当好消息重仓。",
+			"lr": { "true": -1.2, "false": 0.05, "unknown": 0 },
+			"contrarianAdjustable": true,
+			"direction": "含 → 推低（软广特征）"
+		},
+		"authorDensity": {
+			"_doc": "作者近 30 天同主题发文密度。此处用'检索语料内同作者条目数'作代理（densityProxy=in-corpus），无法计算时取 unknown。计数 c：<2 低密度, 2-4 中, >4 高。",
+			"lr": { "low": 0.1, "mid": -0.3, "high": -0.9, "unknown": 0 },
+			"contrarianAdjustable": true,
+			"direction": "高密度 → 推低（垂类博主例外主张可被反方攻击）"
+		},
+		"staleness": {
+			"_doc": "时效：信息发布时间距今。current=<90 天; stale=>=90 天; unknown=无时间戳（0 贡献，不猜）。与官方公告时间差在官方源存在时另行叠加 officialTiming。",
+			"lr": { "current": 0.3, "stale": -0.8, "unknown": 0 },
+			"contrarianAdjustable": false,
+			"direction": "过期 → 推低"
+		},
+		"sampleSize": {
+			"_doc": "声称的样本量。personal='我认识的人/我同学'式个例; small=可数的少量样本; unlabelled=群体性/无法归类; unknown=无法判定（0 贡献）。",
+			"lr": { "personal": -0.7, "small": -0.2, "unlabelled": 0.05, "unknown": 0 },
+			"contrarianAdjustable": true,
+			"direction": "个例 → 推低"
+		},
+		"relevance": {
+			"_doc": "质检的相关性门（gate，不是方向）：on-topic=与主张直接相关; tangent=跑题条目——贡献置零并排除出后验（跑题的证据不是证据）。由质检确定性判定。",
+			"lr": { "on-topic": 0, "tangent": 0, "unknown": 0 },
+			"contrarianAdjustable": false,
+			"direction": "tangent → 排除出后验（不贡献）"
+		},
+		"channelAuthority": {
+			"_doc": "来源通道可信度：official=官方公告源(RSS/官网) 最高权重; ugc=UGC 平台(B站/YouTube); web=普通网页。",
+			"lr": { "official": 1.0, "ugc": 0, "web": -0.1 },
+			"contrarianAdjustable": false,
+			"direction": "官方 → 推高"
+		},
+		"commentRebuttal": {
+			"_doc": "评论区是否存在反驳。hasRebuttal=true 推低（同主题被质疑）; false 且高阅读 → 弱推低（幸存者偏差）; unknown 不计。评论区不可达时 unknown。",
+			"lr": { "hasRebuttal": -0.5, "none": -0.15, "unknown": 0 },
+			"contrarianAdjustable": true,
+			"direction": "有反驳 → 推低"
+		}
+	},
+	"corpusFeatures": {
+		"_doc": "证据**结构**层面的调整（语料级，非单条级；手工设定）。缺失官方口径、单平台、个例主导，这些结构性缺陷是单条特征的叠加看不到的。",
+		"noOfficialSource": {
+			"condition": "全部证据均非官方口径",
+			"logodds": -0.6
+		},
+		"singlePlatformOnly": {
+			"condition": "全部证据来自单一平台",
+			"logodds": -0.3
+		},
+		"majorityPersonal": {
+			"condition": "过半证据为个例叙述",
+			"logodds": -0.6
+		}
+	},
+	"saturation": {
+		"_doc": "相关性折扣：同特征的 N 条证据贡献不是独立的（同质语料、算法同温层），按 tanh(Σ/scale)×scale 饱和。30 条同质'无引流要素'不能当 30 条独立证据叠加。",
+		"scale": 1.5
+	}
 }

@@ -11,11 +11,11 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { computePosterior, sensitivityAnalysis } from "./lib/calibration.ts";
 import { loadConfig, loadLikelihoodRatios } from "./lib/config.ts";
 import { sharedEvidenceIndex } from "./lib/evidence.ts";
-import { computePosterior, sensitivityAnalysis } from "./lib/calibration.ts";
-import { buildReport, type BranchOutcome } from "./lib/report.ts";
-import { resetRun, runState, recordEvidence, type BranchState } from "./lib/runstate.ts";
+import { type BranchOutcome, buildReport } from "./lib/report.ts";
+import { type BranchState, recordEvidence, resetRun, runState } from "./lib/runstate.ts";
 import { setLastReport } from "./lib/runtime.ts";
 import type { ContrarianResult, EvidenceRecord, RawItem } from "./lib/types.ts";
 
@@ -49,41 +49,66 @@ const RawItemSchema = Type.Object(
 export default function (pi: ExtensionAPI) {
 	const config = loadConfig();
 	const index = sharedEvidenceIndex();
-	const textOut = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data) }], details: {} });
+	const textOut = (data: unknown) => ({
+		content: [{ type: "text" as const, text: JSON.stringify(data) }],
+		details: {},
+	});
 
 	pi.registerTool({
 		name: "begin_check",
 		label: "开始甄别",
-		description: "初始化一次甄别运行：解析输入、生成默认三假设（软广/过期/样本不足）并在会话树上登记分支。整轮 /check 的第一步，只调用一次。",
-		parameters: Type.Object({ question: Type.String({ description: "用户输入的问题或方向" }), claim: Type.Optional(Type.String({ description: "待核实主张原文（缺省=question）" })) }),
+		description:
+			"初始化一次甄别运行：解析输入、生成默认三假设（软广/过期/样本不足）并在会话树上登记分支。整轮 /check 的第一步，只调用一次。",
+		parameters: Type.Object({
+			question: Type.String({ description: "用户输入的问题或方向" }),
+			claim: Type.Optional(Type.String({ description: "待核实主张原文（缺省=question）" })),
+		}),
 		promptGuidelines: ["Call begin_check first, once, before any dispatch."],
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const st = resetRun(params.question, params.claim ?? params.question);
 			const sm = ctx.sessionManager as unknown as SessionView;
 			const out: Array<{ slug: string; statement: string; queries: string[] }> = [];
 			for (const b of st.branches.values()) {
-				const entryId = appendEntryId(pi, sm, "hypothesis", { slug: b.hypothesis.slug, statement: b.hypothesis.statement, queries: b.hypothesis.queries });
+				const entryId = appendEntryId(pi, sm, "hypothesis", {
+					slug: b.hypothesis.slug,
+					statement: b.hypothesis.statement,
+					queries: b.hypothesis.queries,
+				});
 				(b as BranchState & { entryId?: string }).entryId = entryId;
 				pi.setLabel(entryId, `hyp/${b.hypothesis.slug}/open`);
 				out.push({ slug: b.hypothesis.slug, statement: b.hypothesis.statement, queries: b.hypothesis.queries });
 			}
-			return textOut({ branches: out, claim: st.claim, next: "对每个分支：dispatch_collector → register_evidence → dispatch_verifier → dispatch_contrarian；全部完成后 finalize_report" });
+			return textOut({
+				branches: out,
+				claim: st.claim,
+				next: "对每个分支：dispatch_collector → register_evidence → dispatch_verifier → dispatch_contrarian；全部完成后 finalize_report",
+			});
 		},
 	});
 
 	pi.registerTool({
 		name: "register_evidence",
 		label: "登记证据",
-		description: "把某分支采集到的原始证据登记进证据库（分配 evidence_id、以 custom entry 落盘、不进 LLM 上下文、contentHash 去重），返回 evidence_ids 供质检/反方引用。",
+		description:
+			"把某分支采集到的原始证据登记进证据库（分配 evidence_id、以 custom entry 落盘、不进 LLM 上下文、contentHash 去重），返回 evidence_ids 供质检/反方引用。",
 		parameters: Type.Object(
 			{
 				branch: Type.String({ description: "所属假设 slug（begin_check 返回的三个之一）" }),
 				items: Type.Array(RawItemSchema, { description: "dispatch_collector 返回的原始条目数组，原样传入" }),
-				degraded: Type.Optional(Type.Array(Type.Object({ channel: Type.String(), query: Type.String(), reason: Type.String() }, { additionalProperties: true }))),
+				degraded: Type.Optional(
+					Type.Array(
+						Type.Object(
+							{ channel: Type.String(), query: Type.String(), reason: Type.String() },
+							{ additionalProperties: true },
+						),
+					),
+				),
 			},
 			{ additionalProperties: false },
 		),
-		promptGuidelines: ["After dispatch_collector, call register_evidence with branch + the returned items to obtain evidence_ids."],
+		promptGuidelines: [
+			"After dispatch_collector, call register_evidence with branch + the returned items to obtain evidence_ids.",
+		],
 		async execute(_id, params) {
 			const ids: string[] = [];
 			let deduped = 0;
@@ -111,16 +136,25 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "finalize_report",
 		label: "生成报告",
-		description: "整轮甄别的最后一步：对已登记的证据与质检/反方产物运行确定性置信度引擎 + 敏感性分析，产出并校验 5 段报告（第 5 段缺失即失败）。主管不要自己写报告，调用本工具。",
+		description:
+			"整轮甄别的最后一步：对已登记的证据与质检/反方产物运行确定性置信度引擎 + 敏感性分析，产出并校验 5 段报告（第 5 段缺失即失败）。主管不要自己写报告，调用本工具。",
 		parameters: Type.Object({}),
-		promptGuidelines: ["Call finalize_report exactly once as the final action, after all branches are verified and refuted."],
+		promptGuidelines: [
+			"Call finalize_report exactly once as the final action, after all branches are verified and refuted.",
+		],
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
 			const st = runState();
 			const branchOutcomes: BranchOutcome[] = [];
 			const contrarianByBranch: Record<string, ContrarianResult | null> = {};
 			const allAssessments = [];
 			for (const b of st.branches.values()) {
-				branchOutcomes.push({ hypothesis: b.hypothesis, verdict: b.state, newEvidenceIds: b.newEvidenceIds, degraded: b.degraded, assessments: b.assessments });
+				branchOutcomes.push({
+					hypothesis: b.hypothesis,
+					verdict: b.state,
+					newEvidenceIds: b.newEvidenceIds,
+					degraded: b.degraded,
+					assessments: b.assessments,
+				});
 				contrarianByBranch[b.hypothesis.slug] = b.contrarian;
 				allAssessments.push(...b.assessments);
 			}
@@ -149,11 +183,21 @@ export default function (pi: ExtensionAPI) {
 			});
 			setLastReport({ markdown: report.markdown, posterior: report.posterior });
 			pi.sendMessage(
-				{ customType: "offerlens-report", content: report.markdown, display: true, details: { posterior: report.posterior, evidenceCount: evidence.length } },
+				{
+					customType: "offerlens-report",
+					content: report.markdown,
+					display: true,
+					details: { posterior: report.posterior, evidenceCount: evidence.length },
+				},
 				{ triggerTurn: false },
 			);
 			void ctx;
-			return textOut({ posterior: report.posterior, evidenceCount: evidence.length, gaps: report.gaps.length, note: "报告已作为 offerlens-report 呈现，无需再复述" });
+			return textOut({
+				posterior: report.posterior,
+				evidenceCount: evidence.length,
+				gaps: report.gaps.length,
+				note: "报告已作为 offerlens-report 呈现，无需再复述",
+			});
 		},
 	});
 }

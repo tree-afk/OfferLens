@@ -12,21 +12,14 @@
  * 跨分支去重：contentHash 全局去重，重复证据不重复计入似然比。
  */
 import { computePosterior, sensitivityAnalysis } from "./calibration.ts";
+import type { OfferLensConfig } from "./config.ts";
 import { loadLikelihoodRatios } from "./config.ts";
 import { sharedEvidenceIndex } from "./evidence.ts";
+import { type BranchOutcome, buildReport } from "./report.ts";
+import type { SourceTools } from "./roles.ts";
 import { buildStubAbandonSummary, planHypotheses, runCollector, runContrarian, runVerifier, verdict } from "./roles.ts";
 import type { ChannelSet } from "./sources.ts";
-import type { SourceTools } from "./roles.ts";
-import { buildReport, type BranchOutcome } from "./report.ts";
-import type {
-	Assessment,
-	ContrarianResult,
-	EvidenceRecord,
-	Hypothesis,
-	HypothesisState,
-	RawItem,
-} from "./types.ts";
-import type { OfferLensConfig } from "./config.ts";
+import type { Assessment, ContrarianResult, EvidenceRecord, Hypothesis, HypothesisState, RawItem } from "./types.ts";
 
 export interface OrchestrationHooks {
 	/** 进度事件（web SSE / notify）：agent_state / hypothesis / evidence / degraded / rebuttal / confidence / done。 */
@@ -65,8 +58,15 @@ export interface CheckResult {
 
 /** 采集/质检/反方的执行器：占位模式 = 进程内角色逻辑；真实模型 = vendored subagent 派发。 */
 export interface RoleExecutor {
-	executeCollector(payload: { hypothesis: string; queries: string[]; urls?: string[] }): Promise<{ items: RawItem[]; degraded: Array<{ channel: string; query: string; reason: string }> }>;
-	executeVerifier(payload: { evidence_ids: string[]; claim: string }): Promise<{ assessments: Assessment[]; corpus: ReturnType<typeof runVerifier>["corpus"] }>;
+	executeCollector(payload: {
+		hypothesis: string;
+		queries: string[];
+		urls?: string[];
+	}): Promise<{ items: RawItem[]; degraded: Array<{ channel: string; query: string; reason: string }> }>;
+	executeVerifier(payload: {
+		evidence_ids: string[];
+		claim: string;
+	}): Promise<{ assessments: Assessment[]; corpus: ReturnType<typeof runVerifier>["corpus"] }>;
 	executeContrarian(payload: { claim: string; evidence_ids: string[] }): Promise<ContrarianResult>;
 	mode: string;
 }
@@ -82,11 +82,16 @@ export function createStubExecutor(channels: ChannelSet, config: OfferLensConfig
 	return {
 		mode: "stub",
 		async executeCollector(payload) {
-			return runCollector(payload, tools, { maxItemsPerSource: config.sources.maxItemsPerSource, rssFeeds: config.sources.rss.feeds });
+			return runCollector(payload, tools, {
+				maxItemsPerSource: config.sources.maxItemsPerSource,
+				rssFeeds: config.sources.rss.feeds,
+			});
 		},
 		async executeVerifier(payload) {
 			const index = sharedEvidenceIndex();
-			const raws = index.resolveRawSnippets(payload.evidence_ids).map((r) => ({ ...r, comments: index.get(r.id)?.comments ?? null }));
+			const raws = index
+				.resolveRawSnippets(payload.evidence_ids)
+				.map((r) => ({ ...r, comments: index.get(r.id)?.comments ?? null }));
 			const result = runVerifier({ evidence: raws, claim: payload.claim });
 			return { assessments: result.assessments, corpus: result.corpus };
 		},
@@ -117,7 +122,11 @@ export async function runCheckFlow(
 
 	// ── 1. 主管规划（占位：确定性；真实模型：LLM 按角色语义产出同构计划）──
 	const plan = planHypotheses(question, opts.claim ?? null, opts.url ?? null);
-	hooks.onEvent("agent_state", { agent: "supervisor", state: "orchestrating", hypotheses: plan.hypotheses.map((h) => h.slug) });
+	hooks.onEvent("agent_state", {
+		agent: "supervisor",
+		state: "orchestrating",
+		hypotheses: plan.hypotheses.map((h) => h.slug),
+	});
 
 	// ── 2. 逐假设分支执行 ──
 	const branchOutcomes: BranchOutcome[] = [];
@@ -141,7 +150,10 @@ export async function runCheckFlow(
 				...(isFirstBranch && opts.url ? { urls: [opts.url] } : {}),
 			});
 		} catch (e) {
-			collector = { items: [], degraded: [{ channel: "collector", query: hypothesis.slug, reason: String((e as Error).message) }] };
+			collector = {
+				items: [],
+				degraded: [{ channel: "collector", query: hypothesis.slug, reason: String((e as Error).message) }],
+			};
 		}
 		const newIds: string[] = [];
 		for (const item of collector.items) {
@@ -162,7 +174,11 @@ export async function runCheckFlow(
 			try {
 				verifierRes = await executor.executeVerifier({ evidence_ids: newIds, claim });
 			} catch (e) {
-				hooks.onEvent("degraded", { branch: hypothesis.slug, channel: "verifier", reason: String((e as Error).message) });
+				hooks.onEvent("degraded", {
+					branch: hypothesis.slug,
+					channel: "verifier",
+					reason: String((e as Error).message),
+				});
 			}
 		}
 
@@ -172,14 +188,22 @@ export async function runCheckFlow(
 		const branchEvidenceIds = newIds;
 		if (opts.ablateContrarian) {
 			// 消融对照（计划 §5.1）：不派发反方 → 第 3 段退化为占位行。默认关闭。
-			hooks.onEvent("degraded", { branch: hypothesis.slug, channel: "contrarian", reason: "ablation: 反方 Agent 已被对照开关禁用" });
+			hooks.onEvent("degraded", {
+				branch: hypothesis.slug,
+				channel: "contrarian",
+				reason: "ablation: 反方 Agent 已被对照开关禁用",
+			});
 		} else if (branchEvidenceIds.length > 0) {
 			try {
 				contrarian = await executor.executeContrarian({ claim, evidence_ids: branchEvidenceIds });
 				contrarianByBranch[hypothesis.slug] = contrarian;
 				hooks.onEvent("rebuttal", { branch: hypothesis.slug, couldNotRefute: contrarian.couldNotRefute });
 			} catch (e) {
-				hooks.onEvent("degraded", { branch: hypothesis.slug, channel: "contrarian", reason: String((e as Error).message) });
+				hooks.onEvent("degraded", {
+					branch: hypothesis.slug,
+					channel: "contrarian",
+					reason: String((e as Error).message),
+				});
 			}
 		}
 
@@ -194,7 +218,9 @@ export async function runCheckFlow(
 				hypothesis,
 				verifierRes?.assessments ?? [],
 				newIds.length,
-				v === "abandoned" ? "判别条件未达到 supported 阈值（见质检特征判定）。" : "证据量不足或采集通道整体不可达，分支无法推进。",
+				v === "abandoned"
+					? "判别条件未达到 supported 阈值（见质检特征判定）。"
+					: "证据量不足或采集通道整体不可达，分支无法推进。",
 			);
 			hooks.appendAbandonSummary(hypothesis.slug, summary);
 		}
@@ -216,7 +242,9 @@ export async function runCheckFlow(
 	hooks.onEvent("agent_state", { agent: "supervisor", state: "calibrating" });
 	const allAssessments = branchOutcomes.flatMap((b) => b.assessments ?? []);
 	const lrAdjustments = Object.values(contrarianByBranch).flatMap((c) => (c ? c.lrAdjustments : []));
-	const evidenceMeta = index.list().map((e) => ({ id: e.id, channelAuthority: e.channelAuthority, platform: e.platform }));
+	const evidenceMeta = index
+		.list()
+		.map((e) => ({ id: e.id, channelAuthority: e.channelAuthority, platform: e.platform }));
 	const calib = computePosterior(allAssessments, evidenceMeta, lrAdjustments, {
 		priorLogodds: config.calibration.priorLogodds,
 		lrTable: loadLikelihoodRatios(),

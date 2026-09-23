@@ -35,8 +35,18 @@ export const DispatchSchemas = {
 		properties: {
 			hypothesis: { type: "string", description: "当前假设的自然语言描述（这是给采集的上下文，不是结论）" },
 			queries: { type: "array", items: { type: "string" }, description: "查询关键词" },
-			urls: { type: "array", items: { type: "string" }, description: "用户直接给定的待核实链接（可选输入，非结论）", optional: true },
-			sourcePlan: { type: "array", items: { type: "string" }, description: "内容源调用计划（可选；占位模式下由扩展解析）", optional: true },
+			urls: {
+				type: "array",
+				items: { type: "string" },
+				description: "用户直接给定的待核实链接（可选输入，非结论）",
+				optional: true,
+			},
+			sourcePlan: {
+				type: "array",
+				items: { type: "string" },
+				description: "内容源调用计划（可选；占位模式下由扩展解析）",
+				optional: true,
+			},
 		},
 	},
 	dispatch_verifier: {
@@ -65,7 +75,10 @@ export const DispatchSchemas = {
 export type DispatchToolName = keyof typeof DispatchSchemas;
 
 /** 校验载荷：未知字段直接抛错（fail-closed）——"无法表达即无法泄漏"的执行点。 */
-export function validateDispatchPayload(toolName: DispatchToolName, payload: unknown): { ok: true; sanitized: Record<string, unknown> } {
+export function validateDispatchPayload(
+	toolName: DispatchToolName,
+	payload: unknown,
+): { ok: true; sanitized: Record<string, unknown> } {
 	const schema = DispatchSchemas[toolName];
 	if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
 		throw new Error(`${toolName} 载荷必须是对象`);

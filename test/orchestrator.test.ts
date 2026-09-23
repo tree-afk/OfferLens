@@ -10,10 +10,15 @@
  *   - 全流程不发真实网络请求（假 ChannelSet）
  */
 import { beforeEach, describe, expect, test } from "vitest";
-import { createStubExecutor, runCheckFlow, type CheckResult, type OrchestrationHooks } from "../extensions/lib/orchestrator.ts";
-import { sharedEvidenceIndex } from "../extensions/lib/evidence.ts";
 import { loadConfig } from "../extensions/lib/config.ts";
-import { ChannelUnavailableError, type ChannelSet } from "../extensions/lib/sources.ts";
+import { sharedEvidenceIndex } from "../extensions/lib/evidence.ts";
+import {
+	type CheckResult,
+	createStubExecutor,
+	type OrchestrationHooks,
+	runCheckFlow,
+} from "../extensions/lib/orchestrator.ts";
+import { type ChannelSet, ChannelUnavailableError } from "../extensions/lib/sources.ts";
 import type { EvidenceRecord, Hypothesis, RawItem } from "../extensions/lib/types.ts";
 
 const VALID_STATES = ["open", "supported", "refuted", "abandoned", "insufficient-evidence"];
@@ -40,7 +45,12 @@ function memHooks() {
 		},
 		appendHypothesis(h: Hypothesis) {
 			const id = `e${++seq}`;
-			entries.push({ id, type: "custom", customType: "hypothesis", data: { slug: h.slug, statement: h.statement, queries: h.queries } });
+			entries.push({
+				id,
+				type: "custom",
+				customType: "hypothesis",
+				data: { slug: h.slug, statement: h.statement, queries: h.queries },
+			});
 			return id;
 		},
 		setLabel(entryId, label) {
@@ -92,7 +102,11 @@ function fakeChannels(opts: { bilibili?: RawItem[]; rssThrows?: boolean } = {}):
 	};
 }
 
-async function run(question: string, channels: ChannelSet, cfg = loadConfig()): Promise<{ result: CheckResult; mem: ReturnType<typeof memHooks> }> {
+async function run(
+	question: string,
+	channels: ChannelSet,
+	cfg = loadConfig(),
+): Promise<{ result: CheckResult; mem: ReturnType<typeof memHooks> }> {
 	const mem = memHooks();
 	const executor = createStubExecutor(channels, cfg);
 	const result = await runCheckFlow({ question }, cfg, executor, mem.hooks);
@@ -126,13 +140,22 @@ describe("runCheckFlow 端到端（占位模式，无网络）", () => {
 	});
 
 	test("放弃/证据不足的分支留下 5 段裁决摘要（custom entry，不进 LLM 上下文）", async () => {
-		const { mem } = await run("字节 2027 届前端实习转正率", fakeChannels({ bilibili: [item({ url: "https://b/1" }), item({ url: "https://b/2" })] }));
+		const { mem } = await run(
+			"字节 2027 届前端实习转正率",
+			fakeChannels({ bilibili: [item({ url: "https://b/1" }), item({ url: "https://b/2" })] }),
+		);
 
 		const summaries = mem.entries.filter((e) => e.customType === "hypothesis-summary");
 		expect(summaries.length).toBeGreaterThan(0);
 
 		const text = (summaries[0].data as { summary: string }).summary;
-		for (const seg of ["【假设】", "【支持它的证据】", "【推翻它的证据】", "【放弃的具体理由】", "【对其它分支的启示】"]) {
+		for (const seg of [
+			"【假设】",
+			"【支持它的证据】",
+			"【推翻它的证据】",
+			"【放弃的具体理由】",
+			"【对其它分支的启示】",
+		]) {
 			expect(text, `裁决摘要缺少 ${seg}`).toContain(seg);
 		}
 		// 摘要条目的 label 可被 /tree 读为 hyp/<slug>/summary
@@ -153,14 +176,20 @@ describe("runCheckFlow 端到端（占位模式，无网络）", () => {
 	});
 
 	test("第 5 段信息缺口非空，且包含小红书 by-design 排除项", async () => {
-		const { result } = await run("字节 2027 届前端实习转正率", fakeChannels({ bilibili: [item({ url: "https://b/1" })] }));
+		const { result } = await run(
+			"字节 2027 届前端实习转正率",
+			fakeChannels({ bilibili: [item({ url: "https://b/1" })] }),
+		);
 		expect(result.gaps.length).toBeGreaterThan(0);
 		expect(result.gaps.some((g) => g.what.includes("小红书"))).toBe(true);
 		expect(result.markdown).toContain("## 5. ⚠️ 信息缺口");
 	});
 
 	test("通道降级 → 报告出现「来源不可达」并计入信息缺口", async () => {
-		const { result } = await run("字节 2027 届前端实习转正率", fakeChannels({ bilibili: [item({ url: "https://b/1" })], rssThrows: false }));
+		const { result } = await run(
+			"字节 2027 届前端实习转正率",
+			fakeChannels({ bilibili: [item({ url: "https://b/1" })], rssThrows: false }),
+		);
 		// 用一个整体不可达的通道集：bilibili 也抛错
 		sharedEvidenceIndex().rebuild([]);
 		const dead: ChannelSet = {
@@ -216,21 +245,36 @@ describe("runCheckFlow 端到端（占位模式，无网络）", () => {
 	});
 
 	test("审计事件齐全（agent_state / hypothesis / evidence / confidence / done）", async () => {
-		const { mem } = await run("字节 2027 届前端实习转正率", fakeChannels({ bilibili: [item({ url: "https://b/1" }), item({ url: "https://b/2" })] }));
+		const { mem } = await run(
+			"字节 2027 届前端实习转正率",
+			fakeChannels({ bilibili: [item({ url: "https://b/1" }), item({ url: "https://b/2" })] }),
+		);
 		const types = new Set(mem.events.map((e) => e.type));
 		for (const expected of ["agent_state", "hypothesis", "evidence", "confidence", "done"]) {
 			expect(types, `缺少事件 ${expected}`).toContain(expected);
 		}
 		// 置信度事件带最终后验
-		const conf = mem.events.filter((e) => e.type === "confidence").at(-1)!.data as { posterior: number; final: boolean };
+		const conf = mem.events.filter((e) => e.type === "confidence").at(-1)!.data as {
+			posterior: number;
+			final: boolean;
+		};
 		expect(conf.final).toBe(true);
 		expect(conf.posterior).toBeGreaterThanOrEqual(0);
 		expect(conf.posterior).toBeLessThanOrEqual(1);
 	});
 
 	test("报告 5 段结构齐备（标题级断言）", async () => {
-		const { result } = await run("字节 2027 届前端实习转正率", fakeChannels({ bilibili: [item({ url: "https://b/1" }), item({ url: "https://b/2" })] }));
-		for (const heading of ["## 1. 结论摘要", "## 2. 证据清单", "## 3. 反面证据", "## 4. 行动建议", "## 5. ⚠️ 信息缺口"]) {
+		const { result } = await run(
+			"字节 2027 届前端实习转正率",
+			fakeChannels({ bilibili: [item({ url: "https://b/1" }), item({ url: "https://b/2" })] }),
+		);
+		for (const heading of [
+			"## 1. 结论摘要",
+			"## 2. 证据清单",
+			"## 3. 反面证据",
+			"## 4. 行动建议",
+			"## 5. ⚠️ 信息缺口",
+		]) {
 			expect(result.markdown, `报告缺少 ${heading}`).toContain(heading);
 		}
 	});
@@ -268,10 +312,30 @@ describe("runCheckFlow 端到端（占位模式，无网络）", () => {
 		// 每条都含相关性关键词「实习」（否则会被质检判为 tangent 而排除出语料级分母），
 		// 同时含「我同学/我室友/我认识的」类个例短语 → 质检判 sampleSize=personal。
 		const personal = [
-			item({ source: "bilibili:1", url: "https://b/1", title: "我同学实习转正了", rawSnippet: "我同学去年在字节实习，最后转正了，流程挺长。" }),
-			item({ source: "bilibili:2", url: "https://b/2", title: "我室友的实习经历", rawSnippet: "我室友在字节实习过，转正率我觉得挺高。" }),
-			item({ source: "bilibili:3", url: "https://b/3", title: "我认识的都转正了", rawSnippet: "我认识的几个在字节实习的人都转正了。" }),
-			item({ source: "bilibili:4", url: "https://b/4", title: "实习转正闲聊", rawSnippet: "说说我身边朋友的实习转正情况。" }),
+			item({
+				source: "bilibili:1",
+				url: "https://b/1",
+				title: "我同学实习转正了",
+				rawSnippet: "我同学去年在字节实习，最后转正了，流程挺长。",
+			}),
+			item({
+				source: "bilibili:2",
+				url: "https://b/2",
+				title: "我室友的实习经历",
+				rawSnippet: "我室友在字节实习过，转正率我觉得挺高。",
+			}),
+			item({
+				source: "bilibili:3",
+				url: "https://b/3",
+				title: "我认识的都转正了",
+				rawSnippet: "我认识的几个在字节实习的人都转正了。",
+			}),
+			item({
+				source: "bilibili:4",
+				url: "https://b/4",
+				title: "实习转正闲聊",
+				rawSnippet: "说说我身边朋友的实习转正情况。",
+			}),
 		];
 		const { result } = await run("字节 2027 届前端实习转正率", fakeChannels({ bilibili: personal }));
 

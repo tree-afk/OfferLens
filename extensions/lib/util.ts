@@ -16,7 +16,9 @@ export function sleep(ms: number): Promise<void> {
 }
 
 export function truncate(text: unknown, max = 400): string {
-	const s = String(text ?? "").replace(/\s+/g, " ").trim();
+	const s = String(text ?? "")
+		.replace(/\s+/g, " ")
+		.trim();
 	return s.length <= max ? s : s.slice(0, max) + "…";
 }
 

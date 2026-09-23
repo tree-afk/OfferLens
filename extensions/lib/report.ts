@@ -6,9 +6,17 @@
  *   4. 行动建议      —— 具体到官方渠道与要问的问题
  *   5. ⚠️ 信息缺口   —— 强制段：缺失 = ReportValidationError = 运行失败
  */
-import { nowIso, truncate } from "./util.ts";
-import type { Assessment, CalibrationResult, ContrarianResult, EvidenceRecord, Hypothesis, SensitivityEntry } from "./types.ts";
+
 import type { OfferLensConfig } from "./config.ts";
+import type {
+	Assessment,
+	CalibrationResult,
+	ContrarianResult,
+	EvidenceRecord,
+	Hypothesis,
+	SensitivityEntry,
+} from "./types.ts";
+import { nowIso, truncate } from "./util.ts";
 
 export class ReportValidationError extends Error {
 	section: number;
@@ -111,9 +119,13 @@ export function assembleGaps(ctx: {
 		);
 	}
 	const unknownStale = ctx.calib.contributions.filter((c) => c.feature === "staleness" && c.state === "unknown").length;
-	if (unknownStale > 0) push(`${unknownStale} 条证据无可靠发布时间`, "源未提供时间戳，时效特征记为 unknown（不计入后验）");
-	const unknownComments = ctx.calib.contributions.filter((c) => c.feature === "commentRebuttal" && c.state === "unknown").length;
-	if (unknownComments > 0) push(`${unknownComments} 条证据的评论区不可达`, "评论区 API 未返回数据，反驳信号记为 unknown");
+	if (unknownStale > 0)
+		push(`${unknownStale} 条证据无可靠发布时间`, "源未提供时间戳，时效特征记为 unknown（不计入后验）");
+	const unknownComments = ctx.calib.contributions.filter(
+		(c) => c.feature === "commentRebuttal" && c.state === "unknown",
+	).length;
+	if (unknownComments > 0)
+		push(`${unknownComments} 条证据的评论区不可达`, "评论区 API 未返回数据，反驳信号记为 unknown");
 	const contrarianAttacked = ctx.calib.appliedAdjustments.filter((a) => a.applied).map((a) => a.feature);
 	if (contrarianAttacked.length > 0) {
 		push(
@@ -154,8 +166,7 @@ export function buildReport(ctx: ReportInput): { markdown: string; gaps: Gap[]; 
 			f?.sampleSize ?? "—",
 			f?.promoCode?.state === true ? "⚠️有" : "无",
 			`[原文](${e.url})`,
-		]
-			.map((c) => String(c).replace(/\|/g, "\\|"));
+		].map((c) => String(c).replace(/\|/g, "\\|"));
 	});
 
 	const rebuttals = Object.entries(ctx.contrarianByBranch).filter(([, c]) => c?.rebuttal);
@@ -177,7 +188,8 @@ export function buildReport(ctx: ReportInput): { markdown: string; gaps: Gap[]; 
 			seenAdvice.add(h);
 		}
 	}
-	if (!adviceLines.length) adviceLines.push("- 去目标公司**官方**招聘渠道（官网校招页 / 官方公众号公告原文）二次确认，不要用搬运帖。");
+	if (!adviceLines.length)
+		adviceLines.push("- 去目标公司**官方**招聘渠道（官网校招页 / 官方公众号公告原文）二次确认，不要用搬运帖。");
 	adviceLines.push(
 		"- 问 HR / 在职学长学姐的三个问题：①「转正率」的分母口径是什么（是否剔除主动离职与被辞退者）；② 你们组最近两年各留用了几个实习生；③ offer 发放与转正答辩的时间线。",
 		"- 对含内推码的内容：先向该公司官方渠道验证内推活动是否真实存在，再决定是否使用码。",
@@ -204,9 +216,11 @@ export function buildReport(ctx: ReportInput): { markdown: string; gaps: Gap[]; 
 
 **${stance}**（结构化置信度 P(可靠)=${pct}%，log-odds=${calib.logodds.toFixed(2)}，基于 ${total} 条证据、${calib.contributions.length} 个特征判定）。
 该数字由可数特征的似然比加权算出（手工权重、启发式、可复现），**不是**模型自报置信度，也未经标注集校准。
-${sensitiveTags.length
-	? `⚠️ 敏感性：结论对特征 [${sensitiveTags.join(", ")}] 高度敏感——中和任一特征后验将移动超过 ${(config.calibration.sensitivityDeltaThreshold * 100).toFixed(0)} 个百分点，详见第 5 段。`
-	: `敏感性：无单一特征主导后验（阈值 ${(config.calibration.sensitivityDeltaThreshold * 100).toFixed(0)}pp）。`}
+${
+	sensitiveTags.length
+		? `⚠️ 敏感性：结论对特征 [${sensitiveTags.join(", ")}] 高度敏感——中和任一特征后验将移动超过 ${(config.calibration.sensitivityDeltaThreshold * 100).toFixed(0)} 个百分点，详见第 5 段。`
+		: `敏感性：无单一特征主导后验（阈值 ${(config.calibration.sensitivityDeltaThreshold * 100).toFixed(0)}pp）。`
+}
 
 **后验构成**（特征 → log-odds 贡献，tanh 饱和后；反方调整过的标记 ⁂）：
 
@@ -263,7 +277,8 @@ function buildContributionRows(calib: CalibrationResult): string {
 	const byFeature = new Map<string, { states: Set<string>; mult: number; adjustable: boolean }>();
 	for (const c of calib.contributions) {
 		if (c.feature === "relevance") continue;
-		if (!byFeature.has(c.feature)) byFeature.set(c.feature, { states: new Set(), mult: 1, adjustable: c.contrarianAdjustable });
+		if (!byFeature.has(c.feature))
+			byFeature.set(c.feature, { states: new Set(), mult: 1, adjustable: c.contrarianAdjustable });
 		const agg = byFeature.get(c.feature)!;
 		agg.states.add(c.state);
 		if (c.multiplier !== 1) agg.mult = c.multiplier;
@@ -275,7 +290,9 @@ function buildContributionRows(calib: CalibrationResult): string {
 		);
 	}
 	for (const r of calib.corpusRows) {
-		rows.push(`| \`${r.feature}\`（语料级） | ${r.state} | ${r.contribution >= 0 ? "+" : ""}${r.contribution.toFixed(2)} |`);
+		rows.push(
+			`| \`${r.feature}\`（语料级） | ${r.state} | ${r.contribution >= 0 ? "+" : ""}${r.contribution.toFixed(2)} |`,
+		);
 	}
 	return rows.join("\n");
 }

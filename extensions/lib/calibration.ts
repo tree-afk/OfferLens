@@ -9,7 +9,7 @@
  * logodds = prior + Σ_feature tanh(Σ_evidence lr / scale) × scale + Σ_corpus
  * posterior = sigmoid(logodds)，语义是 P(信息可靠)。
  */
-import { loadLikelihoodRatios, type LikelihoodRatios } from "./config.ts";
+import { type LikelihoodRatios, loadLikelihoodRatios } from "./config.ts";
 import type {
 	AppliedAdjustment,
 	Assessment,
@@ -72,10 +72,17 @@ export function evidenceContributions(
 }
 
 /** 语料级结构特征（证据结构缺陷是单条特征叠加看不到的）。 */
-export function corpusContributions(evidenceMeta: Array<{ channelAuthority: string; platform: string }>, lrTable: LikelihoodRatios): CorpusRow[] {
+export function corpusContributions(
+	evidenceMeta: Array<{ channelAuthority: string; platform: string }>,
+	lrTable: LikelihoodRatios,
+): CorpusRow[] {
 	const rows: CorpusRow[] = [];
 	const specs = lrTable.corpusFeatures ?? {};
-	if (specs.noOfficialSource && evidenceMeta.length > 0 && evidenceMeta.every((e) => e.channelAuthority !== "official")) {
+	if (
+		specs.noOfficialSource &&
+		evidenceMeta.length > 0 &&
+		evidenceMeta.every((e) => e.channelAuthority !== "official")
+	) {
 		rows.push({ feature: "noOfficialSource", contribution: specs.noOfficialSource.logodds, state: "hit" });
 	}
 	const platforms = new Set(evidenceMeta.map((e) => e.platform));
@@ -117,7 +124,12 @@ export function computePosterior(
 	assessments: Assessment[],
 	evidenceMeta: Array<{ id: string; channelAuthority: string; platform: string }>,
 	lrAdjustments: LrAdjustment[] = [],
-	opts: { priorLogodds?: number; lrTable?: LikelihoodRatios; cap?: { min: number; max: number }; saturationScale?: number } = {},
+	opts: {
+		priorLogodds?: number;
+		lrTable?: LikelihoodRatios;
+		cap?: { min: number; max: number };
+		saturationScale?: number;
+	} = {},
 ): CalibrationResult {
 	const lrTable = opts.lrTable ?? loadLikelihoodRatios();
 	const cap = opts.cap ?? { min: 0.2, max: 5 };
@@ -176,11 +188,24 @@ export function computePosterior(
 
 	const excludedCount = Math.round(contributions.filter((c) => c.excluded).length / 7); // 每条证据 7 行特征
 
-	return { posterior: sigmoid(logodds), logodds, contributions, appliedAdjustments, multipliers, corpusRows, saturated, excludedCount };
+	return {
+		posterior: sigmoid(logodds),
+		logodds,
+		contributions,
+		appliedAdjustments,
+		multipliers,
+		corpusRows,
+		saturated,
+		excludedCount,
+	};
 }
 
 /** 敏感性分析：逐特征中和（其全部贡献置零）后重算后验。 */
-export function sensitivityAnalysis(base: CalibrationResult, threshold: number, evidenceCount: number): SensitivityEntry[] {
+export function sensitivityAnalysis(
+	base: CalibrationResult,
+	threshold: number,
+	evidenceCount: number,
+): SensitivityEntry[] {
 	const out: SensitivityEntry[] = [];
 	const entries: Array<{ feature: string; totalContribution: number }> = [
 		...[...base.saturated.entries()].map(([feature, v]) => ({ feature, totalContribution: v })),

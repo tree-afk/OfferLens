@@ -30,7 +30,9 @@ describe("isolation", () => {
 	});
 
 	test("质检工具的载荷也拒绝 schema 外字段", () => {
-		expect(() => validateDispatchPayload("dispatch_verifier", { evidence_ids: ["a"], verifierSummary: "整体可信" })).toThrow(/verifierSummary/);
+		expect(() =>
+			validateDispatchPayload("dispatch_verifier", { evidence_ids: ["a"], verifierSummary: "整体可信" }),
+		).toThrow(/verifierSummary/);
 	});
 
 	test("采集工具的载荷拒绝 schema 外字段", () => {
@@ -48,7 +50,9 @@ describe("isolation", () => {
 	});
 
 	test("数组元素类型错误被拒绝", () => {
-		expect(() => validateDispatchPayload("dispatch_contrarian", { claim: "x", evidence_ids: ["ok", 42] })).toThrow(/数组元素/);
+		expect(() => validateDispatchPayload("dispatch_contrarian", { claim: "x", evidence_ids: ["ok", 42] })).toThrow(
+			/数组元素/,
+		);
 	});
 
 	test("非对象载荷被拒绝", () => {

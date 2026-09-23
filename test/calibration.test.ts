@@ -5,8 +5,8 @@
  *       反方调整有界性、unknown 不回退。
  */
 import { describe, expect, test } from "vitest";
-import { loadLikelihoodRatios } from "../extensions/lib/config.ts";
 import { computePosterior, evidenceContributions, sensitivityAnalysis } from "../extensions/lib/calibration.ts";
+import { loadLikelihoodRatios } from "../extensions/lib/config.ts";
 import type { Assessment, EvidenceFeatures } from "../extensions/lib/types.ts";
 
 const LR = loadLikelihoodRatios();
@@ -45,7 +45,9 @@ describe("calibration", () => {
 		// 关掉语料级特征，隔离验证「单条证据相关性门」本身
 		const noCorpus = { ...LR, corpusFeatures: {} };
 		const onTopic = computePosterior([mkAssessment("ev_1")], meta1, [], { lrTable: noCorpus });
-		const tangent = computePosterior([mkAssessment("ev_1", { relevance: "tangent" })], meta1, [], { lrTable: noCorpus });
+		const tangent = computePosterior([mkAssessment("ev_1", { relevance: "tangent" })], meta1, [], {
+			lrTable: noCorpus,
+		});
 		expect(tangent.logodds).toBe(0);
 		expect(onTopic.logodds).not.toBe(0);
 		expect(tangent.excludedCount).toBe(1);
@@ -54,7 +56,11 @@ describe("calibration", () => {
 	test("同质证据按特征 tanh 饱和，不随条数线性爆炸", () => {
 		const n = 30;
 		const assessments = Array.from({ length: n }, (_, i) => mkAssessment(`ev_${i}`));
-		const meta = Array.from({ length: n }, (_, i) => ({ id: `ev_${i}`, channelAuthority: "ugc" as const, platform: "bilibili" }));
+		const meta = Array.from({ length: n }, (_, i) => ({
+			id: `ev_${i}`,
+			channelAuthority: "ugc" as const,
+			platform: "bilibili",
+		}));
 		const r = computePosterior(assessments, meta, [], { lrTable: LR });
 		// promoCode=false 每条 0.05：未饱和应为 30×0.05=1.5，饱和后必须 < 1.5
 		expect(r.saturated.get("promoCode")!).toBeLessThan(1.5);
@@ -130,7 +136,11 @@ describe("calibration", () => {
 	});
 
 	test("unknown 状态不回退到有值取值（无信息 = 0 贡献）", () => {
-		const rows = evidenceContributions({ id: "e1", features: mkFeatures({ sampleSize: "unknown" }), channelAuthority: "ugc" }, LR, {});
+		const rows = evidenceContributions(
+			{ id: "e1", features: mkFeatures({ sampleSize: "unknown" }), channelAuthority: "ugc" },
+			LR,
+			{},
+		);
 		const sampleRow = rows.find((r) => r.feature === "sampleSize")!;
 		expect(sampleRow.contribution).toBe(0);
 	});
@@ -160,7 +170,11 @@ describe("calibration", () => {
 	 * 以便把 singlePlatformOnly 之外的差异隔离到 majorityPersonal 上。
 	 */
 	function metaN(n: number) {
-		return Array.from({ length: n }, (_, i) => ({ id: `e${i}`, channelAuthority: "ugc" as const, platform: "bilibili" }));
+		return Array.from({ length: n }, (_, i) => ({
+			id: `e${i}`,
+			channelAuthority: "ugc" as const,
+			platform: "bilibili",
+		}));
 	}
 	const corpusFeats = (r: ReturnType<typeof computePosterior>) => r.corpusRows.map((x) => x.feature);
 

@@ -11,9 +11,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { htmlToText, stripBiliEmphasis, truncate } from "./util.ts";
-import type { RawItem } from "./types.ts";
 import type { OfferLensConfig as Cfg } from "./config.ts";
+import type { RawItem } from "./types.ts";
+import { htmlToText, stripBiliEmphasis, truncate } from "./util.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,7 +31,10 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 /* ---------------- 缓存与限速 ---------------- */
 
 export class DiskCache {
-	constructor(private dir: string, private ttlMs: number) {
+	constructor(
+		private dir: string,
+		private ttlMs: number,
+	) {
 		fs.mkdirSync(dir, { recursive: true });
 	}
 	private file(key: string): string {
@@ -67,9 +70,9 @@ const BILI_UA =
 	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const MIXIN_KEY_ENC_TAB = [
-	46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29, 28,
-	14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54,
-	21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+	46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41,
+	13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34,
+	44, 52,
 ];
 
 function md5(s: string): string {
@@ -78,15 +81,19 @@ function md5(s: string): string {
 
 function mixinKey(imgKey: string, subKey: string): string {
 	const raw = imgKey + subKey;
-	return MIXIN_KEY_ENC_TAB.map((i) => raw[i]).join("").slice(0, 32);
+	return MIXIN_KEY_ENC_TAB.map((i) => raw[i])
+		.join("")
+		.slice(0, 32);
 }
 
 /** wbi 签名：参数按 key 排序、去除 !'()* 字符后 md5。 */
-export function wbiSign(params: Record<string, string | number>, imgKey: string, subKey: string): { query: string; wRid: string } {
+export function wbiSign(
+	params: Record<string, string | number>,
+	imgKey: string,
+	subKey: string,
+): { query: string; wRid: string } {
 	const full = mixinKey(imgKey, subKey);
-	const filtered = Object.fromEntries(
-		Object.entries(params).map(([k, v]) => [k, String(v).replace(/[!'()*]/g, "")]),
-	);
+	const filtered = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v).replace(/[!'()*]/g, "")]));
 	const query = Object.keys(filtered)
 		.sort()
 		.map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(filtered[k])}`)
@@ -106,7 +113,10 @@ async function biliBootstrap(fetchFn: FetchLike): Promise<BiliBootstrap> {
 	if (biliCache && Date.now() - biliCache.at < 3600_000) return biliCache;
 	const home = await fetchFn("https://www.bilibili.com/", { headers: { "user-agent": BILI_UA, accept: "text/html" } });
 	const setCookies = typeof home.headers.getSetCookie === "function" ? home.headers.getSetCookie() : [];
-	const cookie = setCookies.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
+	const cookie = setCookies
+		.map((c) => c.split(";")[0])
+		.filter(Boolean)
+		.join("; ");
 	const nav = await fetchFn("https://api.bilibili.com/x/web-interface/nav", {
 		headers: { "user-agent": BILI_UA, cookie, referer: "https://www.bilibili.com/" },
 	});
@@ -138,7 +148,13 @@ interface BiliSearchItem {
 	comments?: string[] | null;
 }
 
-async function biliApiSearch(fetchFn: FetchLike, cookie: string, wbi: { imgKey: string; subKey: string }, keyword: string, page: number): Promise<BiliSearchItem[]> {
+async function biliApiSearch(
+	fetchFn: FetchLike,
+	cookie: string,
+	wbi: { imgKey: string; subKey: string },
+	keyword: string,
+	page: number,
+): Promise<BiliSearchItem[]> {
 	const params = { search_type: "video", keyword, page, page_size: 20, wts: Math.floor(Date.now() / 1000) };
 	const { query, wRid } = wbiSign(params, wbi.imgKey, wbi.subKey);
 	const res = await fetchFn(`https://api.bilibili.com/x/web-interface/wbi/search/type?${query}&w_rid=${wRid}`, {
@@ -159,7 +175,10 @@ async function biliComments(fetchFn: FetchLike, cookie: string, aid: number, lim
 		const json = (await res.json()) as { data?: { replies?: Array<{ content?: { message?: string } }> } };
 		const replies = json?.data?.replies;
 		if (!Array.isArray(replies)) return null;
-		return replies.map((r) => r?.content?.message).filter(Boolean).slice(0, limit) as string[];
+		return replies
+			.map((r) => r?.content?.message)
+			.filter(Boolean)
+			.slice(0, limit) as string[];
 	} catch {
 		return null;
 	}
@@ -182,10 +201,18 @@ function xmlPick(xml: string, tag: string): string | null {
 		.trim();
 }
 
-export function parseFeed(xml: string): Array<{ title: string; url: string | null; publishedAt: string | null; rawSnippet: string; author: string | null }> {
+export function parseFeed(
+	xml: string,
+): Array<{ title: string; url: string | null; publishedAt: string | null; rawSnippet: string; author: string | null }> {
 	const isRss = /<rss[\s\S]*?<channel/i.test(xml) || /<channel[\s\S]*?<item/i.test(xml);
 	const itemTag = isRss ? "item" : "entry";
-	const items: Array<{ title: string; url: string | null; publishedAt: string | null; rawSnippet: string; author: string | null }> = [];
+	const items: Array<{
+		title: string;
+		url: string | null;
+		publishedAt: string | null;
+		rawSnippet: string;
+		author: string | null;
+	}> = [];
 	const blocks = xml.split(new RegExp(`<${itemTag}[\\s>]`, "i")).slice(1);
 	for (const block of blocks) {
 		const closed = block.split(new RegExp(`</${itemTag}>`, "i"))[0];
@@ -333,7 +360,16 @@ export function createChannels(config: Cfg, fetchImpl: FetchLike = fetch as Fetc
 
 	async function fetchRss(feedUrl: string): Promise<RawItem[]> {
 		const key = `rss:${feedUrl}`;
-		let items = rssCache.get<Array<{ title: string; url: string | null; publishedAt: string | null; rawSnippet: string; author: string | null }>>(key);
+		let items =
+			rssCache.get<
+				Array<{
+					title: string;
+					url: string | null;
+					publishedAt: string | null;
+					rawSnippet: string;
+					author: string | null;
+				}>
+			>(key);
 		if (!items) {
 			await rssGate();
 			const res = await fetchImpl(feedUrl, {
@@ -369,7 +405,15 @@ export function createChannels(config: Cfg, fetchImpl: FetchLike = fetch as Fetc
 			try {
 				const { stdout } = await execFileAsync(
 					"yt-dlp",
-					["--write-auto-sub", "--skip-download", "--sub-lang", "en,zh-Hans,zh", "-o", path.join(tmpDir, "sub"), videoUrl],
+					[
+						"--write-auto-sub",
+						"--skip-download",
+						"--sub-lang",
+						"en,zh-Hans,zh",
+						"-o",
+						path.join(tmpDir, "sub"),
+						videoUrl,
+					],
 					{ timeout: config.sources.fetchTimeoutMs * 2 },
 				);
 				const files = fs.readdirSync(tmpDir).filter((f) => f.endsWith(".vtt"));
