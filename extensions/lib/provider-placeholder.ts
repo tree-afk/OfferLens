@@ -12,19 +12,18 @@
  * 角色由 .pi/agents/*.md 的 system prompt 引导 —— 本文件即被绕过，编排层零改动。
  */
 import {
-	createAssistantMessageEventStream,
-	createProvider,
-	fauxAssistantMessage,
 	type AssistantMessage,
 	type AssistantMessageEventStream,
 	type Context,
+	createAssistantMessageEventStream,
+	createProvider,
+	fauxAssistantMessage,
 	type Model,
 	type SimpleStreamOptions,
 	type StreamFunction,
 	type ToolCall,
 } from "@earendil-works/pi-ai";
 import { runContrarian, runVerifier, type SourceTools } from "./roles.ts";
-import { sharedEvidenceIndex } from "./evidence.ts";
 import type { CollectorResult, ContrarianResult, RawItem, SourcePlanEntry, VerifierResult } from "./types.ts";
 
 export const PLACEHOLDER_PROVIDER = "offerlens-placeholder";
@@ -75,9 +74,7 @@ function toolResultJsons(context: Context): Array<{ tool: string; json: unknown 
 	const out: Array<{ tool: string; json: unknown }> = [];
 	for (const m of context.messages) {
 		if (m.role !== "toolResult") continue;
-		const text = (m.content as Array<{ type: string; text?: string }>)
-			.map((c) => c.text ?? "")
-			.join("\n");
+		const text = (m.content as Array<{ type: string; text?: string }>).map((c) => c.text ?? "").join("\n");
 		try {
 			out.push({ tool: (m as { toolName?: string }).toolName ?? "", json: JSON.parse(text) });
 		} catch {
@@ -94,7 +91,11 @@ function collectorResultFromToolResults(context: Context, queries: string[], url
 		if (Array.isArray(json)) {
 			items.push(...(json as RawItem[]));
 		} else if (json && typeof json === "object" && "error" in (json as Record<string, unknown>)) {
-			degraded.push({ channel: tool.replace("fetch_", ""), query: "", reason: String((json as Record<string, unknown>).error) });
+			degraded.push({
+				channel: tool.replace("fetch_", ""),
+				query: "",
+				reason: String((json as Record<string, unknown>).error),
+			});
 		}
 	}
 	return {
@@ -124,7 +125,12 @@ function emitInto(stream: AssistantMessageEventStream, message: AssistantMessage
 				contentIndex: i,
 				partial: { ...message, content: [...message.content.slice(0, i), { ...block, arguments: {} }] },
 			} as StreamEvent);
-			stream.push({ type: "toolcall_delta", contentIndex: i, delta: JSON.stringify(block.arguments), partial: message } as StreamEvent);
+			stream.push({
+				type: "toolcall_delta",
+				contentIndex: i,
+				delta: JSON.stringify(block.arguments),
+				partial: message,
+			} as StreamEvent);
 			stream.push({ type: "toolcall_end", contentIndex: i, toolCall: block, partial: message } as StreamEvent);
 		}
 	}
@@ -153,7 +159,9 @@ const placeholderStream: StreamFunction<string, SimpleStreamOptions> = (_model: 
 	queueMicrotask(() => {
 		let message: AssistantMessage;
 		if (!task) {
-			message = textMessage(JSON.stringify({ error: "OfferLens 占位模型：缺少 Task 载荷（应由 offerlens 派发工具提供）" }));
+			message = textMessage(
+				JSON.stringify({ error: "OfferLens 占位模型：缺少 Task 载荷（应由 offerlens 派发工具提供）" }),
+			);
 		} else if (task.role === "collector") {
 			if (!hasToolResults(context)) {
 				// 首轮：重放 sourcePlan 的内容源工具调用（真实网络）
@@ -210,7 +218,7 @@ export function getPlaceholderProvider(): PlaceholderHandle {
 			provider: PLACEHOLDER_PROVIDER,
 			baseUrl: "http://localhost:0",
 			reasoning: false,
-			input: ["text"] as ("text")[],
+			input: ["text"] as "text"[],
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 128000,
 			maxTokens: 16384,

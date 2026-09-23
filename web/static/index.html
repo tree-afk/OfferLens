@@ -52,7 +52,7 @@
 <header>
   <h1>OfferLens</h1>
   <input id="q" placeholder="输入求职问题，如：字节 2027 届前端实习转正率" value="字节 2027 届前端实习转正率">
-  <button id="go">甄别</button>
+  <button id="go" type="button">甄别</button>
 </header>
 <div id="degraded"></div>
 <main>
@@ -68,7 +68,7 @@
       <h2>假设树</h2>
       <div id="hyps"><div class="m" style="color:var(--dim)">等待运行…</div></div>
       <h2>置信度曲线 <small style="color:var(--red)">●反方出手点</small></h2>
-      <svg id="conf" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
+      <svg id="conf" viewBox="0 0 300 120" preserveAspectRatio="none" role="img" aria-label="置信度曲线"></svg>
       <div id="posterior" style="font-size:12px;color:var(--dim)">P(可靠) = —</div>
     </div>
   </div>
@@ -154,7 +154,9 @@ async function start() {
   const q = $("q").value.trim();
   if (!q) return;
   if (es) es.close();
-  ["supervisor", "collector", "verifier", "contrarian"].forEach((a) => setAgent(a, "idle"));
+  ["supervisor", "collector", "verifier", "contrarian"].forEach((a) => {
+    setAgent(a, "idle");
+  });
   $("hyps").innerHTML = ""; $("evidence").innerHTML = ""; $("rebuttal").innerHTML = "";
   $("degraded").style.display = "none"; $("degraded").textContent = "";
   $("report").style.display = "none";
