@@ -1,0 +1,19 @@
+# ── 依赖 ──
+node_modules/
+
+# ── OfferLens 运行时产物（会话 / 缓存 / 报告 / 定性对照）──
+.offerlens/
+
+# ── Pi 安装时同步的本地角色定义（由 /offerlens-setup 生成）──
+.pi/agents/
+
+# ── 编辑器 / 系统 ──
+.DS_Store
+Thumbs.db
+*.log
+
+# ── 其他智能体的本地记忆目录（工具状态，不入库）──
+.workbuddy/
+
+# ── 一次性调试产物（真模型跑的事件流残留，本地保留、不入库）──
+.tmp_*

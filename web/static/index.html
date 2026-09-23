@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OfferLens — 校招信息甄别</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --fg: #e6e9ef; --dim: #8a93a5;
+    --green: #4ade80; --red: #f87171; --amber: #fbbf24; --blue: #60a5fa; --purple: #c084fc;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; color: var(--blue); }
+  #q { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--fg); padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+  #go { background: var(--blue); color: #08101d; border: 0; padding: 10px 22px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+  #degraded { display: none; margin: 12px 24px 0; padding: 10px 14px; border: 1px solid var(--amber); color: var(--amber); border-radius: 8px; background: rgba(251,191,36,.06); font-size: 13px; }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 16px; padding: 16px 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .panel h2 { font-size: 13px; color: var(--dim); margin: 0 0 10px; text-transform: uppercase; letter-spacing: .08em; }
+  /* 四宫格：主管 + 三个子 Agent 的状态机 */
+  #agents { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .agent { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .agent .st { font-size: 11px; color: var(--dim); }
+  .agent[data-state="working"] { border-color: var(--blue); }
+  .agent[data-state="done"] { border-color: var(--green); }
+  .agent[data-state="planning"] { border-color: var(--purple); }
+  /* 假设树侧栏 */
+  .hyp { padding: 6px 8px; border-left: 3px solid var(--border); margin-bottom: 6px; font-size: 13px; }
+  .hyp small { color: var(--dim); display: block; }
+  .hyp[data-state="open"] { border-left-color: var(--blue); }
+  .hyp[data-state="supported"] { border-left-color: var(--green); }
+  .hyp[data-state="refuted"] { border-left-color: var(--red); }
+  .hyp[data-state="abandoned"], .hyp[data-state="insufficient-evidence"] { border-left-color: var(--dim); opacity: .7; }
+  /* 置信度曲线 */
+  #conf { width: 100%; height: 120px; }
+  /* 证据时间线 */
+  .ev { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; cursor: pointer; }
+  .ev .t { font-weight: 600; }
+  .ev .m { font-size: 12px; color: var(--dim); }
+  .ev pre { display: none; white-space: pre-wrap; font-size: 12px; color: var(--dim); border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px; }
+  .ev.open pre { display: block; }
+  /* 反方输出：等宽 + 醒目边框 —— 视觉强调"这段没被主管改写" */
+  #rebuttal pre { font-family: Consolas, "Courier New", monospace; font-size: 12px; border: 1px solid var(--purple); border-radius: 8px; padding: 12px; white-space: pre-wrap; background: rgba(192,132,252,.05); max-height: 300px; overflow: auto; }
+  #report { display: none; }
+  #report pre { white-space: pre-wrap; font-size: 12.5px; }
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<header>
+  <h1>OfferLens</h1>
+  <input id="q" placeholder="输入求职问题，如：字节 2027 届前端实习转正率" value="字节 2027 届前端实习转正率">
+  <button id="go">甄别</button>
+</header>
+<div id="degraded"></div>
+<main>
+  <div>
+    <div class="panel">
+      <h2>Agent 状态机</h2>
+      <div id="agents">
+        <div class="agent" id="ag-supervisor" data-state="idle">主管<div class="st">idle</div></div>
+        <div class="agent" id="ag-collector" data-state="idle">采集<div class="st">idle</div></div>
+        <div class="agent" id="ag-verifier" data-state="idle">质检<div class="st">idle</div></div>
+        <div class="agent" id="ag-contrarian" data-state="idle">反方<div class="st">idle</div></div>
+      </div>
+      <h2>假设树</h2>
+      <div id="hyps"><div class="m" style="color:var(--dim)">等待运行…</div></div>
+      <h2>置信度曲线 <small style="color:var(--red)">●反方出手点</small></h2>
+      <svg id="conf" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
+      <div id="posterior" style="font-size:12px;color:var(--dim)">P(可靠) = —</div>
+    </div>
+  </div>
+  <div>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>证据时间线（点击展开原文片段）</h2>
+      <div id="evidence"><span style="color:var(--dim)">等待运行…</span></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>反方原始输出（未经理改写）</h2>
+      <div id="rebuttal"><span style="color:var(--dim)">等待运行…</span></div>
+    </div>
+    <div class="panel" id="report">
+      <h2>5 段式报告</h2>
+      <pre id="reportBody"></pre>
+    </div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let sessionId = null, es = null;
+const confPoints = [], rebuttalMarks = [];
+
+function setAgent(name, state, note) {
+  const el = $("ag-" + name);
+  if (!el) return;
+  el.dataset.state = state;
+  el.querySelector(".st").textContent = note ?? state;
+}
+function addHyp(d) {
+  let el = document.querySelector(`.hyp[data-slug="${d.slug}"]`);
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "hyp"; el.dataset.slug = d.slug;
+    $("hyps").prepend(el);
+  }
+  el.dataset.state = d.state;
+  el.innerHTML = `hyp/${d.slug} — <b>${d.state}</b><small>${(d.statement ?? "").slice(0, 60)}</small>`;
+}
+function drawConf() {
+  const svg = $("conf");
+  if (!confPoints.length) return;
+  const maxN = Math.max(4, confPoints.length);
+  const xs = (i) => 10 + (280 * i) / (maxN - 1);
+  const ys = (p) => 110 - p * 100;
+  const poly = confPoints.map((p, i) => `${xs(i).toFixed(1)},${ys(p).toFixed(1)}`).join(" ");
+  const marks = rebuttalMarks
+    .map((idx) => { const p = confPoints[Math.min(idx, confPoints.length - 1)]; return p === undefined ? "" : `<circle cx="${xs(Math.min(idx, confPoints.length-1)).toFixed(1)}" cy="${ys(p).toFixed(1)}" r="4" fill="var(--red)"/>`; })
+    .join("");
+  svg.innerHTML = `
+    <line x1="10" y1="60" x2="290" y2="60" stroke="var(--border)" stroke-dasharray="4 4"/>
+    <text x="12" y="56" fill="var(--dim)" font-size="9">0.5 先验</text>
+    <polyline points="${poly}" fill="none" stroke="var(--blue)" stroke-width="2"/>${marks}`;
+  $("posterior").textContent = "P(可靠) = " + (confPoints[confPoints.length - 1] * 100).toFixed(1) + "%";
+}
+function addEvidence(d) {
+  if ($("evidence").querySelector("span")) $("evidence").innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "ev";
+  const when = d.publishedAt ? d.publishedAt.slice(0, 10) : "时间未知";
+  el.innerHTML = `<div class="t"></div><div class="m">${d.id} · ${d.platform} · ${when} · ${d.author ?? "未知作者"}</div><pre></pre>`;
+  el.querySelector(".t").textContent = d.title ?? d.url;
+  el.querySelector("pre").textContent = (d.rawSnippet ?? "").slice(0, 800);
+  el.onclick = () => el.classList.toggle("open");
+  $("evidence").prepend(el);
+}
+function addRebuttal(d) {
+  rebuttalMarks.push(confPoints.length); // 反方出手点标红
+  drawConf();
+  const el = $("rebuttal");
+  if (el.querySelector("span")) el.innerHTML = "";
+  const pre = document.createElement("pre");
+  pre.textContent = `分支 hyp/${d.branch}：${d.couldNotRefute ? "未能构造出反驳" : "构造出反驳"}（时点已标红）`;
+  el.prepend(pre);
+}
+function banner(d) {
+  const el = $("degraded");
+  el.style.display = "block";
+  el.textContent += `[${d.channel}] ${d.reason ?? ""} `;
+}
+
+async function start() {
+  const q = $("q").value.trim();
+  if (!q) return;
+  if (es) es.close();
+  ["supervisor", "collector", "verifier", "contrarian"].forEach((a) => setAgent(a, "idle"));
+  $("hyps").innerHTML = ""; $("evidence").innerHTML = ""; $("rebuttal").innerHTML = "";
+  $("degraded").style.display = "none"; $("degraded").textContent = "";
+  $("report").style.display = "none";
+  confPoints.length = 0; rebuttalMarks.length = 0; $("conf").innerHTML = "";
+
+  const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ q }) });
+  const { sessionId: sid } = await r.json();
+  sessionId = sid;
+  es = new EventSource(`/api/events?session=${sid}`);
+  es.onmessage = (m) => {
+    let evt; try { evt = JSON.parse(m.data); } catch { return; }
+    const { type, data } = evt;
+    if (type === "agent_state") setAgent(data.agent, data.state, data.state);
+    else if (type === "hypothesis") addHyp(data);
+    else if (type === "evidence") addEvidence(data);
+    else if (type === "confidence") { confPoints.push(data.posterior); drawConf(); }
+    else if (type === "rebuttal") addRebuttal(data);
+    else if (type === "degraded") banner(data);
+    else if (type === "done") {
+      setAgent("supervisor", "done", "done");
+      es.close();
+      fetch(`/api/report?session=${sessionId}`).then((r) => r.text()).then((t) => {
+        $("report").style.display = "block";
+        $("reportBody").textContent = t;
+      });
+      fetch(`/api/tree?session=${sessionId}`).then((r) => r.text()).then(console.log);
+    }
+  };
+}
+$("go").onclick = start;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+</script>
+</body>
+</html>
