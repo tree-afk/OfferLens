@@ -23,7 +23,14 @@ import { Type } from "typebox";
 import { loadConfig } from "./lib/config.ts";
 import { sharedEvidenceIndex } from "./lib/evidence.ts";
 import { runCollector, runContrarian, runVerifier, type VerifierInputItem } from "./lib/roles.ts";
-import { type BranchState, hasRunState, recordContrarian, recordVerifier, runState } from "./lib/runstate.ts";
+import {
+	type BranchState,
+	hasRunState,
+	recordContrarian,
+	recordVerifier,
+	runState,
+	stashCollection,
+} from "./lib/runstate.ts";
 import { runtime } from "./lib/runtime.ts";
 import { assertContrarianSchemaIsolation, validateDispatchPayload } from "./lib/schema.ts";
 import type {
@@ -356,7 +363,16 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: ["Use dispatch_collector to gather raw evidence for a hypothesis before any judgment."],
 		async execute(_id, params) {
 			const outcome = await dispatchCollector(params as CollectorPayload);
-			return textOut(outcome.ok ? outcome.result : { error: outcome.error });
+			if (!outcome.ok) return textOut({ error: outcome.error });
+			// ★ 原始条目留在扩展侧，只回句柄：主管不需要（也不该）把证据原文再打一遍回去。
+			const { items, degraded } = outcome.result!;
+			const handle = stashCollection(items, degraded);
+			return textOut({
+				collect_id: handle,
+				count: items.length,
+				degraded_count: degraded.length,
+				next: `调用 register_evidence(branch, collect_id="${handle}") 换取 evidence_ids`,
+			});
 		},
 	});
 
@@ -372,15 +388,26 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params) {
 			const outcome = await dispatchVerifier(params as VerifierPayload);
 			// LLM 主管路径：把质检产物并入共享运行态，并按裁决更新分支 label（占位路径不经此处）
+			let touched: string[] = [];
 			if (outcome.ok && hasRunState()) {
-				const touched = recordVerifier(outcome.result!.assessments, outcome.result!.corpus);
+				touched = recordVerifier(outcome.result!.assessments, outcome.result!.corpus);
 				const st = runState();
 				for (const slug of touched) {
 					const b = st.branches.get(slug) as (BranchState & { entryId?: string }) | undefined;
 					if (b?.entryId) pi.setLabel(b.entryId, `hyp/${slug}/${b.state}`);
 				}
 			}
-			return textOut(outcome.ok ? outcome.result : { error: outcome.error });
+			if (!outcome.ok) return textOut({ error: outcome.error });
+			// 逐条特征分不回灌给主管：它已进运行态、由 finalize_report 确定性使用。
+			// 主管看不到评估明细，也就无从"调和"——不调和这条纪律由数据流而非提示词保证。
+			const rel = outcome.result!.assessments.map((a) => a.features.relevance);
+			return textOut({
+				assessed: rel.length,
+				on_topic: rel.filter((r) => r === "on-topic").length,
+				tangent: rel.filter((r) => r === "tangent").length,
+				unknown: rel.filter((r) => r === "unknown").length,
+				branches: touched,
+			});
 		},
 	});
 
@@ -395,9 +422,17 @@ export default function (pi: ExtensionAPI) {
 		],
 		async execute(_id, params) {
 			const outcome = await dispatchContrarian(params as ContrarianPayload);
-			// LLM 主管路径：反方产物并入运行态（供 finalize_report 计入 LR 调整与第 3 段）
-			if (outcome.ok && hasRunState()) recordContrarian((params as ContrarianPayload).evidence_ids, outcome.result!);
-			return textOut(outcome.ok ? outcome.result : { error: outcome.error });
+			if (!outcome.ok) return textOut({ error: outcome.error });
+			const branch = hasRunState()
+				? recordContrarian((params as ContrarianPayload).evidence_ids, outcome.result!)
+				: null;
+			// 反驳全文不回灌：它由 finalize_report 原样送进报告第 3 段。主管读了也不会改它，
+			// 而"看见反方论证"反而给了它调和的机会。
+			return textOut({
+				branch,
+				constructed_rebuttal: !outcome.result!.couldNotRefute,
+				lr_adjustments: outcome.result!.lrAdjustments.length,
+			});
 		},
 	});
 

@@ -15,9 +15,9 @@ import { computePosterior, sensitivityAnalysis } from "./lib/calibration.ts";
 import { loadConfig, loadLikelihoodRatios } from "./lib/config.ts";
 import { sharedEvidenceIndex } from "./lib/evidence.ts";
 import { type BranchOutcome, buildReport } from "./lib/report.ts";
-import { type BranchState, recordEvidence, resetRun, runState } from "./lib/runstate.ts";
+import { type BranchState, getCollection, recordEvidence, resetRun, runState } from "./lib/runstate.ts";
 import { setLastReport } from "./lib/runtime.ts";
-import type { ContrarianResult, EvidenceRecord, RawItem } from "./lib/types.ts";
+import type { ContrarianResult, EvidenceRecord } from "./lib/types.ts";
 
 interface SessionView {
 	getEntries(): Array<{ id: string; type: string; customType?: string }>;
@@ -30,21 +30,6 @@ function appendEntryId(pi: ExtensionAPI, sm: SessionView, customType: string, da
 	if (!last) throw new Error(`appendEntry(${customType}) 后未找到条目`);
 	return last.id;
 }
-
-const RawItemSchema = Type.Object(
-	{
-		source: Type.String(),
-		url: Type.String(),
-		platform: Type.String(),
-		title: Type.String(),
-		rawSnippet: Type.String(),
-		publishedAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-		author: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-		channelAuthority: Type.Union([Type.Literal("official"), Type.Literal("ugc"), Type.Literal("web")]),
-		comments: Type.Optional(Type.Union([Type.Array(Type.String()), Type.Null()])),
-	},
-	{ additionalProperties: true },
-);
 
 export default function (pi: ExtensionAPI) {
 	const config = loadConfig();
@@ -90,29 +75,22 @@ export default function (pi: ExtensionAPI) {
 		name: "register_evidence",
 		label: "登记证据",
 		description:
-			"把某分支采集到的原始证据登记进证据库（分配 evidence_id、以 custom entry 落盘、不进 LLM 上下文、contentHash 去重），返回 evidence_ids 供质检/反方引用。",
+			"用 dispatch_collector 返回的 collect_id 登记该分支的原始证据（分配 evidence_id、以 custom entry 落盘、不进 LLM 上下文、contentHash 去重），返回 evidence_ids 供质检/反方引用。**不需要也不应该把证据原文当参数传进来。**",
 		parameters: Type.Object(
 			{
 				branch: Type.String({ description: "所属假设 slug（begin_check 返回的三个之一）" }),
-				items: Type.Array(RawItemSchema, { description: "dispatch_collector 返回的原始条目数组，原样传入" }),
-				degraded: Type.Optional(
-					Type.Array(
-						Type.Object(
-							{ channel: Type.String(), query: Type.String(), reason: Type.String() },
-							{ additionalProperties: true },
-						),
-					),
-				),
+				collect_id: Type.String({ description: "dispatch_collector 返回的采集句柄（col_N）" }),
 			},
 			{ additionalProperties: false },
 		),
 		promptGuidelines: [
-			"After dispatch_collector, call register_evidence with branch + the returned items to obtain evidence_ids.",
+			"After dispatch_collector, call register_evidence with branch + the collect_id it returned to obtain evidence_ids. Never re-send evidence items.",
 		],
 		async execute(_id, params) {
+			const { items, degraded } = getCollection(params.collect_id);
 			const ids: string[] = [];
 			let deduped = 0;
-			for (const it of params.items as RawItem[]) {
+			for (const it of items) {
 				const { record, deduped: dup } = index.prepare(it);
 				if (dup) {
 					deduped++;
@@ -124,10 +102,10 @@ export default function (pi: ExtensionAPI) {
 				ids.push(record.id);
 			}
 			recordEvidence(params.branch, ids);
-			if (params.degraded?.length) {
+			if (degraded.length) {
 				const st = runState();
 				const b = st.branches.get(params.branch);
-				if (b) b.degraded.push(...params.degraded);
+				if (b) b.degraded.push(...degraded);
 			}
 			return textOut({ branch: params.branch, evidence_ids: ids, added: ids.length - deduped, deduped });
 		},
