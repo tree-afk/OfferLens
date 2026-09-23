@@ -16,6 +16,7 @@ import {
 } from "../extensions/lib/features.ts";
 import {
 	assembleGaps,
+	buildReport,
 	ReportValidationError,
 	stripUnsourcedLinks,
 	validateSection5,
@@ -266,5 +267,64 @@ describe("去链处理必须进第 5 段（不许只在第 3 段悄悄改）", (
 			config,
 		});
 		expect(gaps.some((g) => g.what.includes("证据表之外的 URL"))).toBe(false);
+	});
+});
+
+describe("buildReport 端到端走过链路径（不只测函数本身）", () => {
+	const real = "http://www.bilibili.com/video/av914714365";
+	const fake = "https://www.bilibili.com/video/ev_563c4275d6";
+
+	function ctxWith(rebuttal: string) {
+		const evidence = [
+			{
+				id: "ev_568a30804c",
+				source: "bilibili:BV1fu4y1i7zh",
+				url: real,
+				platform: "bilibili",
+				title: "在字节跳动做外包的真实经历",
+				publishedAt: "2023-08-13T16:49:30.000Z",
+				author: "橙子学长test",
+				authorFeatures: { recentSameTopicCount: 1 },
+				rawSnippet: "干货分享。",
+				contentHash: "h1",
+				staleness: "stale",
+				sampleSize: "unknown",
+				channelAuthority: "ugc",
+				comments: null,
+				fetchedAt: "2026-09-23T00:00:00.000Z",
+			},
+		];
+		const hypothesis = { slug: "softad", statement: "是软广", queries: ["字节 实习"] };
+		return {
+			question: "字节 2027 届前端实习转正率",
+			claim: "字节 2027 届前端实习转正率有 80%",
+			url: null,
+			branchOutcomes: [{ hypothesis, verdict: "refuted", newEvidenceIds: ["ev_568a30804c"], degraded: [] }],
+			contrarianByBranch: { softad: { claim: "c", rebuttal, lrAdjustments: [], couldNotRefute: false } },
+			assessments: [],
+			evidence,
+			calib: emptyCalib(),
+			sensitivity: [],
+			config,
+			durationMs: 1000,
+			dispatchMode: "stub",
+		} as never;
+	}
+
+	test("反方假链接在成品报告里不可点，且论证文字保留", () => {
+		const { markdown, gaps } = buildReport(ctxWith(`见[橙子学长](${fake})的分享。`));
+		const s3 = markdown.slice(markdown.indexOf("## 3."), markdown.indexOf("## 4."));
+		expect(s3).not.toMatch(/\]\(https?:\/\/[^)]*ev_[a-z0-9]+/);
+		expect(s3).toContain("见橙子学长的分享。"); // 文字一字未动
+		expect(s3).toContain("已去掉链接"); // 处理被披露
+		expect(gaps.some((g) => g.what.includes("证据表之外的 URL"))).toBe(true);
+		expect(markdown.slice(markdown.indexOf("## 5."))).toContain(fake);
+	});
+
+	test("反方引真实链接时成品报告不出现去链标注", () => {
+		const { markdown } = buildReport(ctxWith(`见[橙子学长](${real})的分享。`));
+		const s3 = markdown.slice(markdown.indexOf("## 3."), markdown.indexOf("## 4."));
+		expect(s3).toContain(`[橙子学长](${real})`);
+		expect(s3).not.toContain("已去掉链接");
 	});
 });
