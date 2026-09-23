@@ -1,6 +1,6 @@
 # spec-1 工程基线（OfferLens）
 
-日期：2026-09-23 · 状态：待评审 · 取向：求职可展示（轴1）
+日期：2026-09-23 · 状态：**已执行**（判据 5 未验证，偏差与实测见 §7） · 取向：求职可展示（轴1）
 前置：本文档假定 `9e94fa2` 基线 commit 已存在。
 
 ## 1. 目标与非目标
@@ -24,7 +24,7 @@
 | Pi 依赖可安装 | `package-lock.json` 中 `@earendil-works/*` 的 `resolved` | `registry.npmjs.org`，v0.85.1 → `npm ci` 可在 CI 用 |
 | 测试是否依赖仓内缓存 | `grep cacheDir test/*.ts` | `test/sources.test.ts:26` 的 `testConfig()` 把 cacheDir/reportsDir/sessionDir 全指向 `os.tmpdir()` → CI 干净检出可跑 |
 | 测试是否访问真实网络 | 同上文件注入假 `FetchLike` | 否 |
-| 代码卫生 | grep `any` / `TODO` / `console.log` / 空 `catch` | 0 命中 |
+| 代码卫生 | grep `any` / `TODO` / `console.log` / 空 `catch` | **非 0**：`extensions/subagent/index.ts` 2 处 `any`（vendored 上游代码）、`web/server.ts` 2 处 `console.log`（启动横幅，合理）。执行时另由 Biome 查出 `lib/provider-placeholder.ts` 1 处**未使用 import**（原文误记为"0 命中"） |
 | 缺失的工程件 | 目录清点 | 无 LICENSE、无 CI、无 lint/format 配置、无 CHANGELOG、无 `.editorconfig` |
 | README 失效声明 | 与实测对比 | 测试项数写 57/56（实为 71）；`engines: >=20` 与 web 实际需要 Node ≥ 22.7 冲突 |
 
@@ -89,7 +89,7 @@ docs/
 ├── design/                # 迁入根目录三份计划文档，保留原名以便旧引用可解析
 │   ├── 2026-09-08-tree-of-hypotheses-plan.md      ← grounded-tide-robin.md
 │   ├── 2026-09-12-pi-package-migration.md         ← migration-plan.md
-│   └── 2026-09-16-dispatch-retries-fix.md         ← fix-plan-majority-personal.md
+│   └── 2026-09-16-majority-personal-corpus-fix.md  ← fix-plan-majority-personal.md
 ├── CHANGELOG.md           # 从 0.2.0 起记，基线 commit 为第一条
 └── CONTRIBUTING.md        # 跑什么命令、测试纪律、"不声称未测量的数字"这条措辞纪律
 ```
@@ -114,7 +114,7 @@ docs/
 | 5 | GitHub Actions 页 | 4 个 job 全绿，且 `windows-latest` 在列 |
 | 6 | `git ls-files \| grep -c "grounded-tide-robin\|migration-plan\|fix-plan"` | 0（已迁 docs/design） |
 | 7 | `grep -n "57 项\|56 项" README.md` | 无命中（过期数字已更正） |
-| 8 | 覆盖率报告首次产出 | 拿到真实数字后，把 `vitest.config.ts` 的门槛设为该值**向下取整到 5**，不凭感觉填 |
+| 8 | 覆盖率报告首次产出 | 拿到真实数字后设门槛为**向下取整到 5**，不凭感觉填。注意：`vitest.config.ts` 原本**没有** coverage 段（本文原写"调整门槛"，实为"新增"），且该段必须嵌在 `test` 键下 |
 
 ## 5. 风险与回退
 
@@ -128,3 +128,67 @@ docs/
 2. **commit 邮箱用 GitHub noreply** —— 仓库公开后 QQ 邮箱进入采集面；前提是你在 GitHub Settings → Emails 添加该地址，否则 commit 不关联账号、贡献格子不计。
 3. **lint/format 选 Biome** —— 依据见 3.4；类型层保证仍归 `tsc`。
 4. **并行化不写成性能收益** —— 实测差 1.7s，样本各 3 次，写"提速 3 倍"就是没测过的数字（这也是 3.8 措辞纪律的同一条）。
+
+## 7. 执行记录与偏差（2026-09-23 落地后回填）
+
+状态改为**已执行**。判据 1–4、6–8 全过；**判据 5（CI 四格全绿）未验证** —— 本机 `git remote -v` 为空，
+workflow 文件已落地但从未被 GitHub Actions 跑过。下表只记与本文预设不符之处。
+
+### 7.1 本文的事实错误（已就地更正）
+
+| 位置 | 原述 | 实测 |
+|---|---|---|
+| §2 代码卫生 | "0 命中" | 4 命中 + Biome 另查出 1 处未使用 import；已按 2 处 vendored `any` / 2 处启动横幅 / 1 处死 import 分列 |
+| §3.7 文件名 | `2026-09-16-dispatch-retries-fix.md` | 该文档内容讲的是 `majorityPersonal` 语料级特征，与 dispatch 重试无关；实名为 `2026-09-16-majority-personal-corpus-fix.md` |
+| §4 判据 8 | "把 vitest.config.ts 的门槛设为…" | 该文件原本没有 coverage 段，是新增不是调整；且写在顶层键会被 vitest 静默忽略 |
+| §2 缺失件 | 列了无 `.editorconfig` | §3 无对应条目，本次**未建**（`.gitattributes` + Biome 已覆盖行尾与缩进两件事）。清单与范围不一致，保留记录但标未做 |
+
+### 7.2 预设被推翻之处
+
+- **`linter.rules.recommended = true` 并非零成本，且与 §1 非目标直接冲突**：实测 3 error + 26 warning。
+  三个 error **全部落在 `web/static/index.html`** —— 正是 §1 声明"维持现状、不做前端工程化"的那个文件。
+  判据 4 要求 `npm run lint` 退出 0，与非目标互斥。
+  **本次处置**：做单行属性/写法修正（`type="button"`、svg 加 `aria-label`、`forEach` 回调去返回值），
+  独立成 `fix:` commit，理由是这属于修 lint 报错而非前端工程化。
+  26 条 warning 不阻塞退出码（`noNonNullAssertion` 19 条为主），保留为 warning 未清理。
+- **§5 风险 2 当场兑现**：`npm install @vitest/coverage-v8` 以 `*` 解析到 5.0.1，与 vitest 3.2.7 的 peer 冲突，
+  安装直接失败。须锁同大版本。原文把这条列为"风险低"，实际是首次安装即阻断。
+- **README 失效声明不止 §2 列的两处**，另发现四处（详见 commit `1b8398b`）：
+  `dispatchMode` 出厂值已是 `subagent` 但表中标 `stub`（默认）；"lib 层零 Pi 依赖"不成立
+  （`provider-placeholder.ts` 值导入 `createProvider`）；目录结构与工具清单漏了 `checkflow.ts` 与
+  `begin_check`/`register_evidence`/`finalize_report`/`emit_*`；
+  `--experimental-transform-types` 于 **v26.0.0 被移除**，故 `engines: ">=22.7"` 隐含的无上界是错的，
+  `npm run web` 实际可用区间 22.7 ~ 25.x。
+
+### 7.3 本文未覆盖、执行中新增的决定
+
+| 变更 | 理由 |
+|---|---|
+| `verify` 末段由 `npm test` 改 `npm run test:cov` | §3.6 自己写明"CI 与本地用同一条命令，避免两套判据"，但 §3.5 的 verify 定义让本地不测覆盖率，会造成本地绿/CI 红。按前者原则统一到后者 |
+| `@types/node` 提升为显式 devDependency | `tsconfig` 写了 `types:["node"]` 却只靠 pi-coding-agent 传递带入，上游移除即 `tsc` 失败 |
+| 覆盖率口径排除 `extensions/subagent/**` 与 `extensions/lib/types.ts` | 前者 vendored、后者编译期擦除，计入分母是测量假象。`web/` 与胶水层**保留在分母内**（确实是 0），故实测 45.40 而非更高数字 |
+| CI 加 `concurrency` 取消陈旧运行 | 常规做法，避免同分支多次 push 排队 |
+| `.gitignore` 补 `coverage/` | 新增产物；同时经 `vcs.useIgnoreFile` 让 Biome 一并忽略 |
+
+### 7.4 实测数字（供后续引用带出处）
+
+- 覆盖率 2026-09-23，本机 Windows / node v24.14.1，口径见 7.3：
+  statements **45.40%** / branches **77.83%** / functions **67.76%** / lines **45.40%**
+  → 门槛设 45 / 75 / 65 / 45（向下取整到 5）。
+  分模块看：`extensions/lib` 71.21%，`extensions/` 胶水层 7.03%，`web/` 0%。
+- `npm ci` 本机实跑退出 0（非 dry-run）。lock 因手改 package.json 一度与根 devDependencies 不同步，
+  已 `npm install --package-lock-only` 修复，并逐包比对新旧 lock 确认 **0 处版本漂移**
+  （那 6485 行 diff 纯为 npm 重排键序）。
+- Biome v2.5.14（已是 v2，§3.4 所述"类型感知规则需 v2 scanner 显式开启"不影响本次：未启用类型感知规则，
+  类型层保证仍由 `tsc --noEmit` 承担）。
+
+### 7.5 遗留待办
+
+1. **推送并跑通判据 5**：需建 GitHub 仓库、加 remote、在 Settings → Emails 注册 noreply 邮箱，然后 push。
+   这一步涉及共享状态，未自行执行。
+2. **vitest 3.2.7 → ≥4.1.11**：`npm audit` 3 个 moderate 全部来自 vitest/@vitest/mocker
+   （范围 `>=2.1.0 <4.1.11`），3.x 线无修补版本。仅 devDependency、不入 `files` 白名单、不随包分发，
+   大版本升级需重测覆盖率并可能改配置键，故本次未做。
+3. **26 条 lint warning**：以 `noNonNullAssertion`（19）为主，清理会触碰 `extensions/` 运行时语义，
+   超出本 spec 非目标范围。
+4. `.editorconfig` 未建（见 7.1）。
