@@ -1,8 +1,17 @@
 # OfferLens — 校招/实习信息多智能体甄别助手（Pi 包）
 
+![CI](https://github.com/tree-afk/OfferLens/actions/workflows/ci.yml/badge.svg)
+
 输入一个岗位方向或一条待核实的说法，主管 Agent 在**会话树上为每个假设开一个分支**，每个分支派发三个目标互相冲突的子 Agent（采集 / 质检 / 反方）在**独立上下文**中工作；被放弃的假设以**假设裁决语义的摘要**留在树上；最终输出一份带证据溯源、带**结构化置信度**、并**强制标注「我不知道什么」**的 5 段式决策报告。
 
-> **当前版本状态：Pi 包形态 + 模型占位。** 本仓库已是一个可 `pi install` 的 Pi 包（`keywords: ["pi-package"]`）。四个角色默认走 `offerlens-placeholder` provider——**确定性、离线、不接任何 LLM API**，因此整条链路（假设规划 → 派发 → schema 强制 → 内容源 → 置信度 → 5 段报告）**不需要 API key 就能端到端跑通与验证**。要切到真实模型，只需在 Pi 里切模型（见下文「模型」）。
+> **当前版本状态：Pi 包形态，模型可占位可真实。** 本仓库已是一个可 `pi install` 的 Pi 包（`keywords: ["pi-package"]`）。
+>
+> `config/config.json` 目前出厂为 `dispatchMode: "subagent"`（`subagentRetries: 2`）——派发**真实独立 pi 子进程**，
+> 需要 Pi 运行时 + 一个已配置的模型。把该字段改回 `"stub"` 即得到**确定性、离线、不接任何 LLM API** 的路径，
+> 整条链路（假设规划 → 派发 → schema 强制 → 内容源 → 置信度 → 5 段报告）不需要 API key 就能端到端跑通与验证；
+> 71 项单测走的正是这条路径。schema 约束在两种模式下完全一致，隔离性质不因模式而变。
+>
+> 要切到真实模型，只需在 Pi 里切模型（见下文「模型」）。
 
 ---
 
@@ -59,12 +68,22 @@ pi install ./ -l            # 安装为项目本地 Pi 包（写入 .pi/settings
 ### 3. 开发与验证
 
 ```bash
-npm test                    # vitest，57 项单元测试（不打真实网络，不需要 API key）
+npm ci                      # 按 lock 安装（peerDependencies 是 `*`，用 npm install 会解析到未锁定版本）
+npm run verify              # = typecheck + lint + test:cov，与 CI 同一判据
+npm test                    # vitest，71 项单元测试（不打真实网络，不需要 API key）
 npm run typecheck           # tsc --noEmit，0 错误
+npm run lint                # biome check .
 npm run web                 # Web SSE 可视化桥 → http://127.0.0.1:8787
 ```
 
-> Web 桥以 `.ts` 直接托管（`node --experimental-transform-types`），需要 Node ≥ 22.7；扩展本身由 Pi 的 jiti 加载，Node ≥ 20 即可。
+> **Node 版本**：`package.json` 的 `engines.node` 是 `>=22.7`，约束来自 Web 桥以 `.ts` 直接托管
+> （`--experimental-transform-types` 于 **v22.7.0 加入**）。扩展本身由 Pi 的 jiti 加载，理论上 `>=20` 即可，
+> 但 `engines` 只能取全包的交集，故按最高要求声明。
+> 注意同一个 flag 在 **v26.0.0 已被移除**（type stripping 转正后不再需要），因此 `npm run web`
+> 目前的可用区间是 22.7 ~ 25.x；CI 覆盖 22.x 与 24.x 两档。
+>
+> 测试覆盖率的口径与门槛见 `vitest.config.ts` 与 `docs/CONTRIBUTING.md`；
+> `scripts/record-demo.sh` 是**录屏解说稿**（内含写死的旁白），不是可复现的 smoke run，别当演示证据。
 
 ### 4. 核验安装是否成功
 
@@ -98,9 +117,13 @@ pi --offline -p --no-session --approve \
 | 命令 | `/report` | 导出最近一次报告为 markdown |
 | 命令 | `/doctor` | 通道自检 + 派发模式 + 角色定义就位检查 |
 | 命令 | `/offerlens-setup` | 同步角色定义到 `.pi/agents/` |
+| 工具 | `begin_check` | 主管入口：解析输入、播种三个假设分支，返回 `slug` + `queries` |
+| 工具 | `register_evidence` | 主管把采集条目登记入库，返回 `evidence_ids` |
+| 工具 | `finalize_report` | 确定性尾巴：后验 → 敏感性 → 装配 → 第 5 段校验 |
 | 工具 | `dispatch_collector` | 派发采集（封闭 schema） |
 | 工具 | `dispatch_verifier` | 派发质检，只收 `evidence_ids` + `claim` |
 | 工具 | `dispatch_contrarian` | 派发反方，schema **物理上不存在** verdicts/reasoning/summary |
+| 工具 | `emit_verifier_result` / `emit_contrarian_result` | **子进程专用**：以工具调用形式提交结果，入参 schema 即校验契约 |
 | 工具 | `fetch_bilibili` | B 站搜索（wbi 签名直连公开 API，零登录） |
 | 工具 | `fetch_web` | 网页正文抓取（Jina Reader → 直连，三级降级） |
 | 工具 | `fetch_rss` | RSS/Atom 官方源解析（`channelAuthority=official`，最高权重） |
@@ -124,27 +147,8 @@ pi --offline -p --no-session --approve \
 
 ## 架构
 
-```
-/check "求职问题"
-        │
-        ▼
-主管（supervisor，持会话树）── 目标：收敛但不调和
-        │ 每个假设 = 树上一个分支（setLabel 状态机：open → supported/refuted/abandoned/insufficient-evidence）
-   ┌────┼─────────────┐
-   ▼    ▼             ▼
-hyp/softad   hyp/stale   hyp/insufficient
-（放弃的分支：navigateTree + 假设裁决 prompt 留下 5 段摘要，/tree 可读）
-        │ 每个分支内派发（subagent 模式 = 独立 pi 进程，父历史物理不可达）
-        ├─▶ dispatch_collector  → 四路内容源（真实网络 + 三级降级）
-        ├─▶ dispatch_verifier   → 只收 evidence_ids（派发侧解析为原文）
-        └─▶ dispatch_contrarian → schema 只收 claim + evidence_ids
-        ▼
-证据库（appendEntry 语义：custom entry 不进 LLM 上下文，与会话树同一份 JSONL，contentHash 跨分支去重）
-        ▼
-置信度引擎（朴素贝叶斯形式 + tanh 饱和 + 语料级结构调整 + 敏感性分析）
-        ▼
-5 段式报告（第 5 段缺失即失败）
-```
+见 [`docs/architecture.md`](docs/architecture.md) —— 流水线图、模块边界表（依赖关系由 import 实测得出）、
+以及"程序化 / LLM 主管"两条编排路径的分界。
 
 ---
 
@@ -184,8 +188,8 @@ Bilibili（`bili` CLI 优先 → **wbi 签名直连公开搜索 API**（cookie �
 
 | 模式 | 含义 | 需要什么 |
 |---|---|---|
-| `stub`（默认） | 角色逻辑**进程内确定性执行**（占位期）。schema 约束与真实路径完全一致 | 无——离线可跑 |
-| `subagent` | 经 vendored subagent 扩展 `spawn pi --mode json -p --no-session` 派发**真实独立进程** | Pi 运行时 + 真实模型 |
+| `stub` | 角色逻辑**进程内确定性执行**。schema 约束与真实路径完全一致 | 无——离线可跑，71 项单测走这条 |
+| `subagent`（**当前 `config/config.json` 出厂值**） | 经 vendored subagent 扩展 `spawn pi --mode json -p --no-session --approve` 派发**真实独立进程** | Pi 运行时 + 真实模型 |
 
 > 两种模式下「主管能传给子 Agent 什么」由同一组封闭 schema 决定，因此隔离性质不因模式而变。
 
@@ -196,16 +200,22 @@ Bilibili（`bili` CLI 优先 → **wbi 签名直连公开搜索 API**（cookie �
 ```
 offerlens/
 ├── package.json            # Pi 包 manifest（keywords: pi-package + pi.extensions/pi.prompts）
+├── biome.json              # lint + format 单工具（tab / 120 / recommended）
+├── vitest.config.ts        # 测试与覆盖率棘轮（coverage 必须嵌在 test 下）
+├── .github/workflows/ci.yml# ubuntu × windows × node 22/24 四格矩阵
+├── docs/                   # 架构 / 设计推演史 / CHANGELOG / 贡献指南（见 docs/README.md）
 ├── extensions/             # ★ Pi 扩展（jiti 直接加载 .ts，无编译步骤）
 │   ├── hypotheses.ts       # /check /scan /abandon /offerlens-setup + Tree-of-Hypotheses 集成
-│   ├── isolation.ts        # dispatch_* 三个封闭 schema 工具（上下文隔离）
+│   ├── checkflow.ts        # LLM 主管工具：begin_check / register_evidence / finalize_report
+│   ├── isolation.ts        # dispatch_* 封闭 schema 工具 + emit_* 子进程提交工具
 │   ├── evidence.ts         # 证据 entry renderer + session_start 索引重建
 │   ├── sources.ts          # 四路 fetch_* 工具 + /doctor + placeholder provider 注册
 │   ├── report.ts           # /report 命令 + 报告 message renderer
-│   ├── lib/                # 纯逻辑层（可单测，零 Pi 依赖）
+│   ├── lib/                # 逻辑层（单测不需要 Pi；但见下方 caveat）
 │   │   ├── orchestrator.ts # runCheckFlow：假设规划→分支→派发→裁决→聚合→报告
-│   │   ├── roles.ts        # 三角色桩逻辑 + HYPOTHESIS_ABANDON_PROMPT
-│   │   ├── calibration.ts  # 后验 / tanh 饱和 / 敏感性分析
+│   │   ├── roles.ts        # 三角色执行逻辑（桩 + 混合质检）+ 裁决摘要 prompt
+│   │   ├── runstate.ts     # LLM 主管路径的进程内运行态（分支↔证据映射）
+│   │   ├── calibration.ts  # 后验 / tanh 饱和 / 语料级调整 / 敏感性分析
 │   │   ├── report.ts       # 5 段报告装配 + 第 5 段强制校验
 │   │   ├── features.ts     # 确定性特征抽取（促销码/样本量/时效/密度/反驳）
 │   │   ├── evidence.ts     # EvidenceIndex（contentHash 去重）
@@ -213,17 +223,21 @@ offerlens/
 │   │   ├── schema.ts       # TypeBox 封闭 schema + fail-closed 校验
 │   │   ├── provider-placeholder.ts # 占位 provider（离线确定性）
 │   │   ├── config.ts types.ts util.ts runtime.ts
-│   └── subagent/           # vendor 自 Pi examples/extensions/subagent（MIT）
+│   └── subagent/           # vendor 自 Pi examples/extensions/subagent（MIT，不参与格式化与覆盖率）
 ├── agents/                 # 三角色定义（YAML frontmatter），/offerlens-setup 同步到 .pi/agents/
 ├── prompts/                # check.md / scan.md 工作流模板
 ├── config/                 # config.json（运行时）+ likelihood-ratios.json（似然比表）
-├── test/                   # vitest（56 项）
+├── test/                   # vitest（71 项）
 └── web/                    # server.ts（SSE 桥）+ static/index.html（单文件前端）
 ```
 
+> **lib 层的 Pi 耦合是真实存在的，不要当成"零依赖"**：`runtime.ts` 只有 type-only 导入（编译期擦除），
+> 但 `provider-placeholder.ts` 值导入了 `createProvider` 等。单测之所以不需要 Pi，是因为没有测试
+> 导入这两个文件，而不是因为它们不依赖 Pi。逐模块的依赖表见 `docs/architecture.md`。
+
 ---
 
-## 与计划文档（`grounded-tide-robin.md`）的对应与偏差
+## 与计划文档（[`docs/design/2026-09-08-tree-of-hypotheses-plan.md`](docs/design/2026-09-08-tree-of-hypotheses-plan.md)）的对应与偏差
 
 **如实标注偏差（没有悄悄淡化）：**
 
