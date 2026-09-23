@@ -4,6 +4,9 @@ node_modules/
 # ── OfferLens 运行时产物（会话 / 缓存 / 报告 / 定性对照）──
 .offerlens/
 
+# ── 测试覆盖率产物（npm run test:cov 生成）──
+coverage/
+
 # ── Pi 安装时同步的本地角色定义（由 /offerlens-setup 生成）──
 .pi/agents/
 

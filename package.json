@@ -21,7 +21,11 @@
 	},
 	"scripts": {
 		"test": "vitest run",
+		"test:cov": "vitest run --coverage",
 		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"format": "biome check --write .",
+		"verify": "npm run typecheck && npm run lint && npm test",
 		"web": "node --experimental-transform-types web/server.ts"
 	},
 	"peerDependencies": {
@@ -33,12 +37,29 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.14",
+		"@types/node": "^26.5.1",
 		"@vitest/coverage-v8": "^3.2.7",
 		"typescript": "^5.9.3",
 		"vitest": "^3.2.4"
 	},
 	"license": "MIT",
 	"engines": {
-		"node": ">=20"
-	}
+		"node": ">=22.7"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tree-afk/OfferLens.git"
+	},
+	"bugs": {
+		"url": "https://github.com/tree-afk/OfferLens/issues"
+	},
+	"homepage": "https://github.com/tree-afk/OfferLens#readme",
+	"files": [
+		"extensions",
+		"agents",
+		"prompts",
+		"config",
+		"README.md",
+		"LICENSE"
+	]
 }
