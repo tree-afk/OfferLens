@@ -1,42 +1,44 @@
 {
-  "name": "offerlens",
-  "version": "0.2.0",
-  "description": "OfferLens — 校招/实习信息多智能体甄别助手，基于 Pi 的 Pi 包",
-  "type": "module",
-  "keywords": [
-    "pi-package"
-  ],
-  "pi": {
-    "extensions": [
-      "./extensions/sources.ts",
-      "./extensions/evidence.ts",
-      "./extensions/isolation.ts",
-      "./extensions/checkflow.ts",
-      "./extensions/report.ts",
-      "./extensions/hypotheses.ts"
-    ],
-    "prompts": [
-      "./prompts"
-    ]
-  },
-  "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "web": "node --experimental-transform-types web/server.ts"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
-  },
-  "license": "MIT",
-  "engines": {
-    "node": ">=20"
-  }
+	"name": "offerlens",
+	"version": "0.2.0",
+	"description": "OfferLens — 校招/实习信息多智能体甄别助手，基于 Pi 的 Pi 包",
+	"type": "module",
+	"keywords": [
+		"pi-package"
+	],
+	"pi": {
+		"extensions": [
+			"./extensions/sources.ts",
+			"./extensions/evidence.ts",
+			"./extensions/isolation.ts",
+			"./extensions/checkflow.ts",
+			"./extensions/report.ts",
+			"./extensions/hypotheses.ts"
+		],
+		"prompts": [
+			"./prompts"
+		]
+	},
+	"scripts": {
+		"test": "vitest run",
+		"typecheck": "tsc --noEmit",
+		"web": "node --experimental-transform-types web/server.ts"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-agent-core": "*",
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.14",
+		"@vitest/coverage-v8": "^3.2.7",
+		"typescript": "^5.9.3",
+		"vitest": "^3.2.4"
+	},
+	"license": "MIT",
+	"engines": {
+		"node": ">=20"
+	}
 }
