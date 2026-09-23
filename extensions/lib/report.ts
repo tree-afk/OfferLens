@@ -137,7 +137,61 @@ export function assembleGaps(ctx: {
 	if (couldNotRefute) {
 		push("反方未能构造出反驳", "这最多说明现有证据结构攻不动，不构成对主张的支持证明（反方从不出具可信证明）");
 	}
+	const unsourced = [...auditContrarianLinks(ctx).values()].flatMap((v) => v.removed);
+	if (unsourced.length) {
+		push(
+			`反方输出含 ${unsourced.length} 个证据表之外的 URL（第 3 段已去链）`,
+			`反方是 LLM，会把内部证据句柄拼成看似可点的链接；已保留论证文字、仅摘除链接。被去链：${[...new Set(unsourced)]
+				.map((u) => `\`${u}\``)
+				.join("、")}`,
+		);
+	}
 	return gaps;
+}
+
+/**
+ * 反方输出的 URL 白名单去链。
+ *
+ * 第 3 段的契约是"反方原始输出不被改写"，但反方是 LLM：实测它会把手上的内部句柄
+ * `ev_<sha1前10位>` 塞进真实链接模板，造出 `https://www.bilibili.com/video/ev_563c4275d6`
+ * 这种看着能点、实际不存在的"来源"。对一份教人核对溯源的报告，这是最不该出现的假象。
+ *
+ * 所以只摘掉超链接、不动一个字；并且把摘了多少如实标出来 + 计入第 5 段。
+ */
+export function stripUnsourcedLinks(text: string, allowed: Set<string>): { text: string; removed: string[] } {
+	const removed: string[] = [];
+	const sourced = (url: string) => {
+		if (allowed.has(url)) return true;
+		for (const a of allowed) if (a.startsWith(url) || url.startsWith(a)) return true;
+		return false;
+	};
+	// 1) markdown 链接：非来源 → 只留锚文本
+	let out = text.replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g, (all, label: string, url: string) => {
+		if (sourced(url)) return all;
+		removed.push(url);
+		return label;
+	});
+	// 2) 裸 URL：非来源 → 降级为行内代码（可见但不可点）
+	out = out.replace(/https?:\/\/[^\s)<>\]]+/g, (url) => {
+		const bare = url.replace(/[.,;:!?]$/, "");
+		if (sourced(bare)) return url;
+		removed.push(bare);
+		return `\`${url}\``;
+	});
+	return { text: out, removed };
+}
+
+/** 各分支反方输出的去链结果（改写后的文本 + 被去链的 URL），供第 3 段渲染与第 5 段缺口共用。 */
+function auditContrarianLinks(
+	ctx: Pick<ReportInput, "evidence" | "contrarianByBranch">,
+): Map<string, { text: string; removed: string[] }> {
+	const allowed = new Set(ctx.evidence.map((e) => e.url));
+	const out = new Map<string, { text: string; removed: string[] }>();
+	for (const [slug, c] of Object.entries(ctx.contrarianByBranch)) {
+		if (!c?.rebuttal) continue;
+		out.set(slug, stripUnsourcedLinks(c.rebuttal, allowed));
+	}
+	return out;
 }
 
 export function buildReport(ctx: ReportInput): { markdown: string; gaps: Gap[]; posterior: number; stance: string } {
@@ -169,13 +223,20 @@ export function buildReport(ctx: ReportInput): { markdown: string; gaps: Gap[]; 
 		].map((c) => String(c).replace(/\|/g, "\\|"));
 	});
 
+	const linkAudit = auditContrarianLinks(ctx);
 	const rebuttals = Object.entries(ctx.contrarianByBranch).filter(([, c]) => c?.rebuttal);
 	const section3 = rebuttals.length
 		? rebuttals
-				.map(
-					([slug, c]) =>
-						`<details open><summary>分支 <code>hyp/${slug}</code> 的反方输出（${c!.couldNotRefute ? "未能构造出反驳" : "构造出反驳"}）</summary>\n\n---\n\n${c!.rebuttal}\n\n---\n\n</details>`,
-				)
+				.map(([slug, c]) => {
+					const stripped = linkAudit.get(slug)?.removed;
+					const text = linkAudit.get(slug)!.text;
+					const note = stripped?.length
+						? `\n\n> 注：本段有 ${stripped.length} 处链接不在证据表中，已去掉链接（论证文字未改动）。\n`
+						: "";
+					return `<details open><summary>分支 <code>hyp/${slug}</code> 的反方输出（${
+						c!.couldNotRefute ? "未能构造出反驳" : "构造出反驳"
+					}）</summary>\n\n---\n\n${text}\n${note}---\n\n</details>`;
+				})
 				.join("\n\n")
 		: "_（未派发反方：无可反驳的证据面）_";
 

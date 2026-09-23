@@ -14,7 +14,12 @@ import {
 	detectPromoCode,
 	parseQuestion,
 } from "../extensions/lib/features.ts";
-import { assembleGaps, ReportValidationError, validateSection5 } from "../extensions/lib/report.ts";
+import {
+	assembleGaps,
+	ReportValidationError,
+	stripUnsourcedLinks,
+	validateSection5,
+} from "../extensions/lib/report.ts";
 import type { CalibrationResult } from "../extensions/lib/types.ts";
 
 const LR = loadLikelihoodRatios();
@@ -167,5 +172,99 @@ describe("features 确定性抽取", () => {
 		const p = parseQuestion("多智能体方向有哪些公司");
 		expect(p.kind).toBe("info");
 		expect(p.companies).not.toContain("字节");
+	});
+});
+
+describe("反方输出的 URL 白名单去链（第 3 段完整性）", () => {
+	// 证据表里的真实 URL（B 站是 av<数字> 形态）
+	const real = "http://www.bilibili.com/video/av914714365";
+	const allowed = new Set([real]);
+
+	test("证据表内的 markdown 链接原样保留", () => {
+		const src = `见[外包经历](${real})说明。`;
+		const { text, removed } = stripUnsourcedLinks(src, allowed);
+		expect(text).toBe(src);
+		expect(removed).toEqual([]);
+	});
+
+	test("把内部句柄拼成的假链接去链，论证文字一字不动", () => {
+		// 2026-09-23 真跑第 3 段里出现过的实际形态
+		const fake = "https://www.bilibili.com/video/ev_563c4275d6";
+		const { text, removed } = stripUnsourcedLinks(`主要来自个人分享（如[大厂洋姐职场教练](${fake})）。`, allowed);
+		expect(text).toBe("主要来自个人分享（如大厂洋姐职场教练）。");
+		expect(removed).toEqual([fake]);
+		expect(text).not.toContain("http");
+	});
+
+	test("裸的假 URL 降级为行内代码，可见但不可点", () => {
+		const fake = "https://www.bilibili.com/video/ev_e3eca4d39e";
+		const { text, removed } = stripUnsourcedLinks(`参考 ${fake} 。`, allowed);
+		expect(text).toContain(`\`${fake}\``);
+		expect(text).not.toMatch(/\]\(http/);
+		expect(removed).toEqual([fake]);
+	});
+
+	test("带查询参数的真实链接按前缀关系放行，不误伤", () => {
+		const withQuery = `${real}?spm_id_from=333.788`;
+		const { text, removed } = stripUnsourcedLinks(`[原文](${withQuery})`, allowed);
+		expect(text).toBe(`[原文](${withQuery})`);
+		expect(removed).toEqual([]);
+	});
+
+	test("空证据表时任何链接都算无来源（不默认放行）", () => {
+		const { text, removed } = stripUnsourcedLinks(`[x](${real})`, new Set());
+		expect(text).toBe("x");
+		expect(removed).toEqual([real]);
+	});
+});
+
+describe("去链处理必须进第 5 段（不许只在第 3 段悄悄改）", () => {
+	const real = "http://www.bilibili.com/video/av914714365";
+	const fake = "https://www.bilibili.com/video/ev_563c4275d6";
+
+	function evidenceOne() {
+		return [
+			{
+				id: "ev_x",
+				contentHash: "h",
+				url: real,
+				platform: "bilibili",
+				title: "t",
+				rawSnippet: "s",
+				publishedAt: "2026-01-01T00:00:00.000Z",
+				author: "a",
+				channelAuthority: "ugc",
+				comments: null,
+			},
+		] as never;
+	}
+	const branch = (rebuttal: string) =>
+		({ hyp: { rebuttal, lrAdjustments: [], couldNotRefute: false, claim: "c" } }) as never;
+
+	test("反方含假链接 → 第 5 段出现一条说明被去链的缺口", () => {
+		const gaps = assembleGaps({
+			evidence: evidenceOne(),
+			calib: emptyCalib(),
+			sensitivity: [],
+			collectorDegraded: [],
+			contrarianByBranch: branch(`见[某人](${fake})。`),
+			config,
+		});
+		const hit = gaps.find((g) => g.what.includes("证据表之外的 URL"));
+		expect(hit).toBeDefined();
+		expect(hit!.why).toContain(fake);
+		expect(hit!.why).toContain("仅摘除链接");
+	});
+
+	test("反方只引真实链接 → 不产生该缺口（不把处理当默认成本）", () => {
+		const gaps = assembleGaps({
+			evidence: evidenceOne(),
+			calib: emptyCalib(),
+			sensitivity: [],
+			collectorDegraded: [],
+			contrarianByBranch: branch(`见[某人](${real})。`),
+			config,
+		});
+		expect(gaps.some((g) => g.what.includes("证据表之外的 URL"))).toBe(false);
 	});
 });
