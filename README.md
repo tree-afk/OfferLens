@@ -118,11 +118,11 @@ pi --offline -p --no-session --approve \
 | 命令 | `/doctor` | 通道自检 + 派发模式 + 角色定义就位检查 |
 | 命令 | `/offerlens-setup` | 同步角色定义到 `.pi/agents/` |
 | 工具 | `begin_check` | 主管入口：解析输入、播种三个假设分支，返回 `slug` + `queries` |
-| 工具 | `register_evidence` | 主管把采集条目登记入库，返回 `evidence_ids` |
+| 工具 | `dispatch_collector` | 派发采集（封闭 schema）；**只回 `collect_id` 与条数**，证据原文不回主管 |
+| 工具 | `register_evidence` | 用 `collect_id` 换取 `evidence_ids`（条目不经参数，主管无需重传内容） |
 | 工具 | `finalize_report` | 确定性尾巴：后验 → 敏感性 → 装配 → 第 5 段校验 |
-| 工具 | `dispatch_collector` | 派发采集（封闭 schema） |
-| 工具 | `dispatch_verifier` | 派发质检，只收 `evidence_ids` + `claim` |
-| 工具 | `dispatch_contrarian` | 派发反方，schema **物理上不存在** verdicts/reasoning/summary |
+| 工具 | `dispatch_verifier` | 派发质检，只收 `evidence_ids` + `claim`；**只回计数**，逐条特征分不回主管 |
+| 工具 | `dispatch_contrarian` | 派发反方，schema **物理上不存在** verdicts/reasoning/summary；只回是否构造出反驳 |
 | 工具 | `emit_verifier_result` / `emit_contrarian_result` | **子进程专用**：以工具调用形式提交结果，入参 schema 即校验契约 |
 | 工具 | `fetch_bilibili` | B 站搜索（wbi 签名直连公开 API，零登录） |
 | 工具 | `fetch_web` | 网页正文抓取（Jina Reader → 直连，三级降级） |

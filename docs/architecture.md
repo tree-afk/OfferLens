@@ -78,3 +78,19 @@ hyp/softad   hyp/stale   hyp/insufficient
 | LLM 主管 | 模型按 `prompts/check.md` 依次调用工具 | `dispatchMode: "subagent"` + 真实模型 | `extensions/checkflow.ts` + `extensions/isolation.ts` |
 
 两条路径产出的 `ContributionRow[]` 与报告契约相同，因此 `finalize_report` / 置信度引擎不需要知道走了哪条。
+
+### 主管的数据可见面（2026-09-23 起）
+
+LLM 主管**只搬运句柄，不搬运数据**：
+
+| 环节 | 主管收到 | 实体留在 |
+|---|---|---|
+| `dispatch_collector` | `collect_id` + 条数 + `degraded_count` | 运行态 `collections` |
+| `register_evidence` | `evidence_ids`（约 427 字符） | 证据库（custom entry，本就不进上下文） |
+| `dispatch_verifier` | `on_topic / tangent / unknown` 计数 | 分支 `assessments` |
+| `dispatch_contrarian` | 是否构造出反驳 + 调整条数 | 分支 `contrarian` |
+
+这一层收窄同时买到了两样东西：一是把"主管重打证据"的开销去掉（实测那一步曾占整轮模型输出的
+九成以上），二是让**「不调和」成为数据流约束而不是提示词请求**——主管看不到逐条评估与反方全文，
+就没有可被它调和的对象。报告第 3 段的反方原文由 `finalize_report` 直接从运行态取，不经过主管。
+
